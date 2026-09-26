@@ -1,0 +1,16 @@
+{
+  "manifestVersion": "1.0",
+  "id": "sample-business-agent",
+  "displayName": "Sample Business Agent",
+  "description": "Creates a bounded report for sample files beneath its Runner-assigned local data directory.",
+  "version": "1.0.0",
+  "executable": "SampleBusinessAgent.exe",
+  "supportedCommands": ["run", "diagnose"],
+  "capabilities": ["local-folder-report", "result-artifact"],
+  "defaultTimeoutSeconds": 300,
+  "defaultConcurrencyPolicy": "Forbid",
+  "supportsScheduling": true,
+  "supportsManualRun": true,
+  "requiresInteractiveUserSession": false,
+  "configurationSchemaVersion": "1.0"
+}

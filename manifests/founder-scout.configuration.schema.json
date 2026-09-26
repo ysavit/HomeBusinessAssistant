@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homebusinessassistant.local/schemas/founder-scout-configuration-1.0.json",
+  "title": "Founder Scout configuration 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "dataDirectory", "discovery", "analysis", "ranking", "priority", "activity", "invitation", "ai", "retention", "persona", "startupSchool", "processing"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "dataDirectory": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "discovery": { "type": "object" },
+    "analysis": { "type": "object" },
+    "ranking": { "type": "object" },
+    "priority": { "type": "object" },
+    "activity": { "type": "object" },
+    "invitation": { "type": "object" },
+    "ai": { "type": "object", "description": "Contains only provider settings and an opaque secret reference; never a secret value." },
+    "retention": { "type": "object" },
+    "persona": { "type": "object" },
+    "startupSchool": { "type": "object" },
+    "processing": { "type": "object" }
+  },
+  "additionalProperties": false
+}

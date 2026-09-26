@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Remove="coverlet.collector;Microsoft.NET.Test.Sdk;Moq;NUnit;NUnit.Analyzers;NUnit3TestAdapter" />
+    <Using Remove="NUnit.Framework" />
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.AgentSdk\HomeBusinessAssistant.AgentSdk.csproj" />
+    <Content Include="test-agent.agent-manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

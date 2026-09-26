@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.Runner\HomeBusinessAssistant.Runner.csproj" />
+    <ProjectReference Include="..\..\agents\WakeRemote\WakeRemote.Agent\WakeRemote.Agent.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\agents\WakeRemote\WakeRemote.Application\WakeRemote.Application.csproj" />
+    <ProjectReference Include="..\..\agents\SampleBusinessAgent\SampleBusinessAgent.Agent\SampleBusinessAgent.Agent.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\HomeBusinessAssistant.TestAgent\HomeBusinessAssistant.TestAgent.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

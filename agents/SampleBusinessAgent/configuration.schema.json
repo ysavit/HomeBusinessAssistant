@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homebusinessassistant.local/schemas/sample-business-agent-configuration-1.0.json",
+  "title": "Sample Business Agent configuration",
+  "description": "A safe generic-editor example using strings, integers, booleans, arrays, and an opaque secret reference.",
+  "type": "object",
+  "required": ["schemaVersion", "sourceRelativePath", "maximumFiles", "includedExtensions", "requireAtLeastOneFile", "notificationSecretReference"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "sourceRelativePath": { "type": "string", "title": "Sample folder", "description": "Relative to the Runner-assigned agent data directory.", "default": "inbox", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._/-]+$" },
+    "maximumFiles": { "type": "integer", "title": "Maximum files", "default": 100, "minimum": 1, "maximum": 500 },
+    "includedExtensions": { "type": "array", "title": "Included extensions", "description": "One extension per line.", "items": { "type": "string" }, "default": [".txt", ".csv", ".json"], "minItems": 1, "maxItems": 20 },
+    "requireAtLeastOneFile": { "type": "boolean", "title": "Require a matching file", "description": "When enabled, an empty report completes with an operator-attention failure.", "default": false },
+    "notificationSecretReference": { "type": "string", "title": "Optional notification token", "description": "Demonstrates separate secret storage; the sample never contacts a remote service.", "format": "hba-secret-reference", "default": "secret://sample-business-agent/notification-token", "minLength": 10, "maxLength": 256 }
+  },
+  "additionalProperties": false
+}

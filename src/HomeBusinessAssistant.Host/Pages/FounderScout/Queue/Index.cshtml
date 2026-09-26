@@ -1,0 +1,25 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.FounderScout.Queue.IndexModel
+@using global::FounderScout.Application
+@{
+    ViewData["Title"] = "Manual invitation queue";
+    var queue = Model.Queue!;
+}
+
+<header class="page-header"><div><p class="eyebrow">Explicit local planning</p><h1>Manual invitation queue</h1><p>Plan a primary group and reserve group inside a user-defined window. This is not an external quota or reset-time claim.</p></div><a class="button-link ghost" asp-page="/FounderScout/Candidates/Index">Find candidates</a></header>
+<partial name="../_Tabs" />
+<section class="manual-notice"><strong>Copy and send manually</strong><span>Queue actions only update the local database. They never contact a candidate or source platform.</span></section>
+
+@if (queue.Window.Id == Guid.Empty)
+{
+    <section class="form-shell"><div class="panel-heading"><div><h2>Create a planning window</h2><span class="supporting">Defaults are 15 primary and 15 reserve. Dates and capacities remain user-managed.</span></div></div><form method="post" asp-page-handler="CreateWindow" class="form-grid"><div><label for="startAtLocal">Starts</label><input id="startAtLocal" name="startAtLocal" type="datetime-local" value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" /></div><div><label for="endAtLocal">Ends</label><input id="endAtLocal" name="endAtLocal" type="datetime-local" value="@DateTime.Now.AddDays(30).ToString("yyyy-MM-ddTHH:mm")" /></div><div><label for="primarySize">Primary capacity</label><input id="primarySize" name="primarySize" type="number" min="1" max="500" value="15" /></div><div><label for="reserveSize">Reserve capacity</label><input id="reserveSize" name="reserveSize" type="number" min="0" max="500" value="15" /></div><div class="wide"><label for="notes">Window notes</label><textarea id="notes" name="notes" maxlength="2000"></textarea></div><div class="wide"><button class="primary">Create local window</button></div></form></section>
+}
+else
+{
+    <section class="facts-strip" aria-label="Invitation window"><div class="fact"><span>Starts</span><strong>@queue.Window.StartAtUtc.ToLocalTime().ToString("d")</strong></div><div class="fact"><span>Ends</span><strong>@queue.Window.EndAtUtc.ToLocalTime().ToString("d")</strong></div><div class="fact"><span>Primary</span><strong>@queue.Primary.Count / @queue.Window.PrimaryQueueSize</strong></div><div class="fact"><span>Reserve</span><strong>@queue.Reserve.Count / @queue.Window.ReserveQueueSize</strong></div><div class="fact"><span>Recorded sent</span><strong>@queue.Window.SentCount</strong></div></section>
+    <div class="queue-grid">
+        <section class="queue-lane"><div class="panel-heading"><div><p class="eyebrow">First review group</p><h2>Primary queue</h2></div><span class="pill positive">@queue.Primary.Count / @queue.Window.PrimaryQueueSize</span></div>@if (queue.Primary.Count == 0) { <p class="empty-state">No primary candidates yet.</p> } else { <ol class="queue-list">@foreach (var row in queue.Primary) { <partial name="_QueueCard" model="row" /> }</ol> }</section>
+        <section class="queue-lane reserve-lane"><div class="panel-heading"><div><p class="eyebrow">Backup review group</p><h2>Reserve queue</h2></div><span class="pill muted">@queue.Reserve.Count / @queue.Window.ReserveQueueSize</span></div>@if (queue.Reserve.Count == 0) { <p class="empty-state">No reserve candidates yet.</p> } else { <ol class="queue-list">@foreach (var row in queue.Reserve) { <partial name="_QueueCard" model="row" /> }</ol> }</section>
+    </div>
+    <section class="table-shell"><div class="panel panel-heading"><div><h2>Ranked suggestions</h2><span class="supporting">Suggestions are not queued until you choose a lane.</span></div></div>@if (queue.Suggestions.Count == 0) { <p class="empty-state">No eligible shortlisted suggestions are available.</p> } else { <div class="table-scroll"><table><thead><tr><th>Rank</th><th>Candidate</th><th>Priority</th><th>Confidence</th><th>Action</th></tr></thead><tbody>@foreach (var candidate in queue.Suggestions) { <tr><td class="rank-cell">@candidate.Rank</td><td><a asp-page="/FounderScout/Candidates/Details" asp-route-id="@candidate.CandidateId">@candidate.DisplayName</a><span class="supporting">@candidate.Recommendation</span></td><td>@candidate.InvitationPriority?.ToString("0.0")</td><td>@candidate.Confidence?.ToString("0.00")</td><td><div class="inline-actions"><form method="post" asp-page-handler="Add"><input type="hidden" name="candidateId" value="@candidate.CandidateId" /><button class="ghost" name="queueKind" value="Primary">Primary</button><button class="ghost" name="queueKind" value="Reserve">Reserve</button></form></div></td></tr> }</tbody></table></div> }</section>
+}

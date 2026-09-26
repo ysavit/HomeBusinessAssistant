@@ -1,0 +1,65 @@
+@page "/Agents/{id}"
+@model HomeBusinessAssistant.Host.Pages.Agents.DetailsModel
+@{
+    ViewData["Title"] = Model.Detail?.Agent.Definition.DisplayName ?? "Agent";
+    var detail = Model.Detail!;
+    bool manualConflict = detail.Agent.ActiveRunId.HasValue && detail.Agent.Definition.DefaultConcurrencyPolicy == HomeBusinessAssistant.Domain.Agents.ConcurrencyPolicy.Forbid;
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Installed agent · @detail.Agent.Definition.Id.Value</p><h1>@detail.Agent.Definition.DisplayName</h1><p>@detail.Agent.Definition.Description</p></div>
+    <div class="page-actions">
+        <form method="post" asp-page-handler="Setup"><input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><button class="secondary">@(Model.IsOnboardingPending ? "Set up" : "Run setup again")</button></form>
+        <a class="button-link primary" asp-page="/Agents/Configuration" asp-route-id="@detail.Agent.Definition.Id.Value">Edit configuration</a>
+        <form method="post" asp-page-handler="SetEnabled" data-confirm="@(detail.Agent.Definition.Enabled ? "Disable this agent? Active runs will not be terminated." : "Enable this agent?")">
+            <input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><input type="hidden" name="enabled" value="@(!detail.Agent.Definition.Enabled)" />
+            <button class="@(detail.Agent.Definition.Enabled ? "danger" : "secondary")">@(detail.Agent.Definition.Enabled ? "Disable" : "Enable")</button>
+        </form>
+    </div>
+</header>
+
+<section class="facts-strip" aria-label="Agent facts">
+    <div class="fact"><span>Status</span><strong>@(detail.Agent.Definition.Enabled ? detail.Configuration is null ? "Needs setup" : "Enabled" : "Disabled")</strong></div>
+    <div class="fact"><span>Installed</span><strong>@detail.Agent.Definition.InstalledVersion</strong></div>
+    <div class="fact"><span>Manifest</span><strong>@detail.Agent.Definition.ManifestVersion</strong></div>
+    <div class="fact"><span>Configuration</span><strong>@(detail.Configuration is null ? "None" : $"Revision {detail.Configuration.CurrentRevision.RevisionNumber}")</strong></div>
+    <div class="fact"><span>Active run</span><strong>@(detail.Agent.ActiveRunStatus?.ToString() ?? "None")</strong></div>
+    <div class="fact"><span>Next due</span><strong>@(detail.Agent.NextOccurrenceAtUtc?.ToLocalTime().ToString("g") ?? "None")</strong></div>
+</section>
+
+<nav class="tabs" aria-label="Agent detail sections"><a href="#overview" aria-current="page">Overview</a><a href="#configuration">Configuration</a><a href="#schedules">Schedules</a><a href="#runs">Runs</a></nav>
+
+<div class="content-grid">
+    <div class="stack">
+        <section id="overview" class="panel">
+            <div class="panel-heading"><h2>Manifest and capabilities</h2></div>
+            <div class="form-grid">
+                <div><strong>Executable</strong><p class="supporting code">@detail.Agent.Definition.ExecutableRelativePath</p><span class="pill @(Model.ExecutablePresent == true ? "positive" : Model.ExecutablePresent == false ? "attention" : "muted")">@(Model.ExecutablePresent == true ? "Present" : Model.ExecutablePresent == false ? "Missing" : "Not probed")</span></div>
+                <div><strong>Working directory</strong><p class="supporting code">@detail.Agent.Definition.WorkingDirectoryRelativePath</p></div>
+                <div><strong>Last executed SHA-256</strong><p class="supporting code">@(Model.LastExecutableHash ?? "Not recorded")</p></div>
+                <div><strong>Capabilities</strong><p class="supporting">@(Model.Capabilities.Count == 0 ? "None declared" : string.Join(", ", Model.Capabilities))</p></div>
+                <div><strong>Commands</strong><p class="supporting">@(Model.Commands.Count == 0 ? "None declared" : string.Join(", ", Model.Commands))</p></div>
+            </div>
+        </section>
+        <section id="configuration" class="panel">
+            <div class="panel-heading"><h2>Configuration history</h2><a asp-page="/Agents/Configuration" asp-route-id="@detail.Agent.Definition.Id.Value">Open editor</a></div>
+            @if (detail.ConfigurationHistory.Count == 0) { <p class="empty-state">No configuration revisions.</p> }
+            else { <ul class="compact-list">@foreach (var revision in detail.ConfigurationHistory.Take(8)) { <li><strong><a asp-page="/Agents/ConfigurationHistory" asp-route-id="@detail.Agent.Definition.Id.Value" asp-route-revisionId="@revision.Id">Revision @revision.RevisionNumber</a></strong><span>@revision.CreatedAtUtc.ToLocalTime().ToString("g") · @revision.ChangeSummary</span></li> }</ul> }
+        </section>
+        <section id="schedules" class="table-shell">
+            <div class="panel-heading panel"><h2>Schedules</h2><a asp-page="/Schedules/Edit" asp-route-agentId="@detail.Agent.Definition.Id.Value">Create schedule</a></div>
+            @if (detail.Schedules.Count == 0) { <p class="empty-state">No schedules for this agent.</p> }
+            else { <div class="table-scroll"><table><thead><tr><th>Name</th><th>Type</th><th>State</th><th>Time zone</th></tr></thead><tbody>@foreach (var schedule in detail.Schedules) { <tr><td><a asp-page="/Schedules/Details" asp-route-id="@schedule.Id">@schedule.Name</a></td><td>@schedule.Kind</td><td>@(schedule.IsEnabled ? schedule.IsPaused ? "Paused" : "Enabled" : "Disabled")</td><td>@schedule.TimeZoneId</td></tr> }</tbody></table></div> }
+        </section>
+        <section id="runs" class="table-shell">
+            <div class="panel-heading panel"><h2>Latest runs</h2><a asp-page="/Runs/Index" asp-route-agentId="@detail.Agent.Definition.Id.Value">All runs</a></div>
+            @if (detail.RecentRuns.Count == 0) { <p class="empty-state">No runs have been recorded.</p> }
+            else { <div class="table-scroll"><table><thead><tr><th>Started</th><th>Status</th><th>Summary</th></tr></thead><tbody>@foreach (var run in detail.RecentRuns.Take(10)) { <tr><td><a asp-page="/Runs/Details" asp-route-id="@run.Id.Value">@run.StartedAtUtc.ToLocalTime().ToString("g")</a></td><td>@run.Status</td><td>@(run.SummaryText ?? run.ErrorType ?? "—")</td></tr> }</tbody></table></div> }
+        </section>
+    </div>
+    <aside class="stack" aria-label="Agent actions">
+        <section class="panel"><div class="panel-heading"><h2>Run now</h2></div>@if (!detail.Agent.Definition.Enabled) { <p class="empty-state">Enable the agent before creating work.</p> } else if (manualConflict) { <p class="empty-state attention-text">A run is already active and this agent’s Forbid concurrency policy prevents another submission.</p><a asp-page="/Runs/Details" asp-route-id="@detail.Agent.ActiveRunId!.Value.Value">View or cancel active run</a> } else { <p class="supporting">Configuration revision @detail.Configuration?.CurrentRevision.RevisionNumber · concurrency @detail.Agent.Definition.DefaultConcurrencyPolicy</p>@foreach (var command in Model.Commands) { <form method="post" asp-page-handler="Run" class="inline-actions"><input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><input type="hidden" name="command" value="@command" /><button type="submit" class="secondary">Run @command</button></form> } }</section>
+        <section class="panel"><div class="panel-heading"><h2>Attention</h2></div><p class="@(detail.Agent.AttentionReason is null ? "empty-state" : "empty-state attention-text")">@(detail.Agent.AttentionReason ?? "No attention items.")</p></section>
+        <section class="panel"><div class="panel-heading"><h2>Audit trail</h2></div><a asp-page="/Audit/Index" asp-route-agentId="@detail.Agent.Definition.Id.Value">View agent audit events</a></section>
+    </aside>
+</div>

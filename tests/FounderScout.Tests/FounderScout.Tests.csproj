@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Agent\FounderScout.Agent.csproj" />
+    <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Application\FounderScout.Application.csproj" />
+    <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Domain\FounderScout.Domain.csproj" />
+    <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Infrastructure\FounderScout.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.Application\HomeBusinessAssistant.Application.csproj" />
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.AgentSdk\HomeBusinessAssistant.AgentSdk.csproj" />
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.Infrastructure\HomeBusinessAssistant.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.Runner\HomeBusinessAssistant.Runner.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1.0",
+  "sourceRelativePath": "inbox",
+  "maximumFiles": 100,
+  "includedExtensions": [".txt", ".csv", ".json"],
+  "requireAtLeastOneFile": false,
+  "notificationSecretReference": "secret://sample-business-agent/notification-token"
+}

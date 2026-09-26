@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Infrastructure\FounderScout.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\HomeBusinessAssistant.Host\HomeBusinessAssistant.Host.csproj" />
+  </ItemGroup>
+
+</Project>

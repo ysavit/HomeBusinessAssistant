@@ -1,0 +1,142 @@
+@page "/Onboarding/FounderScout"
+@model HomeBusinessAssistant.Host.Pages.Onboarding.FounderScoutModel
+@using global::FounderScout.Application
+@using global::FounderScout.Domain
+@using HomeBusinessAssistant.Application.Onboarding
+@using HomeBusinessAssistant.Domain.Agents
+@{
+    ViewData["Title"] = "Set up Founder Scout";
+    FounderScoutOnboardingEditor? editor = Model.Editor;
+    string step = Model.Step;
+    string[] stepKeys = [FounderScoutOnboardingSteps.Purpose, FounderScoutOnboardingSteps.BrowserAccount, FounderScoutOnboardingSteps.Source, FounderScoutOnboardingSteps.Policy, FounderScoutOnboardingSteps.Ai, FounderScoutOnboardingSteps.Checks, FounderScoutOnboardingSteps.Review];
+    string[] stepTitles = ["Purpose & privacy", "Browser account", "Source & limits", "Screening & fit", "AI provider", "Checks", "Review"];
+}
+
+<header class="page-header onboarding-header">
+    <div>
+        <p class="eyebrow">First-run · Founder Scout</p>
+        <h1>Configure a careful founder-research workflow.</h1>
+        <p>This wizard saves typed settings and verifies prerequisites. It does not enable Founder Scout, create a schedule, start discovery, or send an invitation.</p>
+    </div>
+    <a class="button-link ghost" asp-page="/Agents/Configuration" asp-route-id="founder-scout">Open Agent Settings</a>
+</header>
+
+@if (editor is null)
+{
+    <section class="panel"><p class="empty-state">Founder Scout onboarding is unavailable.</p></section>
+}
+else
+{
+    <nav class="founder-wizard-nav" aria-label="Founder Scout setup steps">
+        @for (var index = 0; index < stepKeys.Length; index++)
+        {
+            <a class="@(step == stepKeys[index] ? "current" : string.Empty)" aria-current="@(step == stepKeys[index] ? "step" : null)" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@stepKeys[index]"><span>@(index + 1)</span>@stepTitles[index]</a>
+        }
+    </nav>
+
+    <section class="onboarding-summary" aria-label="Founder Scout setup status">
+        <div><span>Mode</span><strong>@(editor.Mode == FounderScoutOnboardingMode.DeepAnalysis ? "Deep analysis" : "Capture + screen")</strong></div>
+        <div><span>Agent</span><strong>@(editor.Selection.ProgressStatus == OnboardingAgentProgressStatus.ReadyForValidation ? "Ready" : "Disabled")</strong></div>
+        <div><span>Revision</span><strong>@editor.ConfigurationRecord.CurrentRevision.RevisionNumber</strong></div>
+        <div><span>Blockers</span><strong>@editor.Blockers.Count</strong></div>
+    </section>
+
+    @if (step == FounderScoutOnboardingSteps.Purpose)
+    {
+        <form method="post" asp-page-handler="Purpose" class="stack founder-wizard-form">
+            <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" />
+            <section class="panel">
+                <p class="eyebrow">Step 1 of 7</p><h2>Purpose, consent, and privacy</h2>
+                <div class="privacy-grid">
+                    <article><h3>Dedicated local browser</h3><p>Founder Scout uses a persistent profile beneath its local data directory. Sign-in happens manually in the headed browser; this UI never asks for a password, cookie, or session export.</p></article>
+                    <article><h3>Fail closed</h3><p>External navigation is HTTPS and host allow-listed. Discovery stops on login redirects, access denial, throttling, CAPTCHA/challenge, unexpected hosts, and parser-health failure.</p></article>
+                    <article><h3>Evidence, not attributes</h3><p>Protected and irrelevant personal attributes are excluded. AI output is schema-validated, confidence reflects missing evidence, and final arithmetic is calculated in C#.</p></article>
+                    <article><h3>Human review only</h3><p>Drafts and queues support a person. Founder Scout has no automatic invitation or message-sending command. Live use remains subject to site terms and your authorization.</p></article>
+                </div>
+                <fieldset><legend>Source mode</legend>
+                    <label class="option-card"><input asp-for="Form.LiveSource" type="radio" value="false" /><span><strong>Fixture-only / local evaluation</strong><small>Configure deterministic screening without claiming live-source consent.</small></span></label>
+                    <label class="option-card"><input asp-for="Form.LiveSource" type="radio" value="true" /><span><strong>Live browser pilot</strong><small>Use the code-owned Startup School source with conservative limits.</small></span></label>
+                </fieldset>
+                <label class="check-row"><input asp-for="Form.LiveConsentAcknowledged" /><span><strong>I confirm I am authorized to use the source and will comply with its terms.</strong><small>Required only for live setup; this acknowledgement is durable and auditable.</small></span></label>
+                <fieldset><legend>Processing mode</legend>
+                    <label class="option-card"><input asp-for="Form.DeepAnalysis" type="radio" value="false" /><span><strong>Capture and screen only</strong><small>No AI provider or API key is required. Deep evaluation can be added later.</small></span></label>
+                    <label class="option-card"><input asp-for="Form.DeepAnalysis" type="radio" value="true" /><span><strong>Deep analysis</strong><small>Requires a protected provider key and successful explicit provider test.</small></span></label>
+                </fieldset>
+            </section>
+            <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/Agents" asp-route-sessionId="@Model.SessionId">Back to agents</a><button class="primary" type="submit">Save and continue</button></div>
+        </form>
+    }
+    else if (step == FounderScoutOnboardingSteps.BrowserAccount)
+    {
+        <form method="post" asp-page-handler="Account" class="stack founder-wizard-form">
+            <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" />
+            <section class="panel"><p class="eyebrow">Step 2 of 7</p><h2>Dedicated browser account</h2><p>The account is disabled until headed authentication succeeds. Saving this form does not create or open the profile directory.</p>
+                <div class="form-grid"><label>Account ID<input asp-for="Form.AccountId" pattern="[a-z0-9](?:[a-z0-9\-]{0,62}[a-z0-9])?" autocomplete="off" /><small>Lower-case letters, digits, and internal hyphens.</small></label><label>Display name<input asp-for="Form.AccountDisplayName" autocomplete="off" /></label><label>Initial segment ID<input asp-for="Form.SegmentId" /></label><label>Generated profile identifier<input value="browser/@Model.Form.AccountId" readonly aria-describedby="profile-note" /><small id="profile-note">Relative identifier only; the full local user path is never shown.</small></label></div>
+                <div class="notice info"><strong>Authentication locator strategy</strong><span>Code-owned semantic/stable-attribute defaults · adapter @StartupSchoolSourceOptions.CurrentAdapterVersion. Arbitrary selectors, scripts, proxies, stealth, CAPTCHA solving, and enforcement failover are unavailable.</span></div>
+                @if (editor.BrowserAccounts.Count > 0) { <h3>Existing accounts</h3><div class="safe-table"><table><thead><tr><th>ID</th><th>Name</th><th>State</th><th>Profile</th></tr></thead><tbody>@foreach (BrowserAccount account in editor.BrowserAccounts) { <tr><td><code>@account.Id</code></td><td>@account.DisplayName</td><td>@account.SessionStatus</td><td><code>@account.BrowserProfileRelativePath</code></td></tr> }</tbody></table></div> }
+            </section>
+            <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Purpose">Back</a><button class="primary" type="submit">Save account</button></div>
+        </form>
+    }
+    else if (step == FounderScoutOnboardingSteps.Source)
+    {
+        <form method="post" asp-page-handler="Source" class="stack founder-wizard-form">
+            <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" /><input type="hidden" asp-for="Form.AccountId" />
+            <section class="panel"><p class="eyebrow">Step 3 of 7</p><h2>Startup School source and conservative limits</h2><p>The start route and expected HTTPS hosts are platform-owned. You cannot submit an unrestricted URL.</p>
+                <dl class="agent-choice-facts"><div><dt>Source</dt><dd>Startup School co-founder matching</dd></div><div><dt>Allowed hosts</dt><dd>startupschool.org</dd></div><div><dt>Navigation</dt><dd>Sequential; one browser context</dd></div><div><dt>Enforcement response</dt><dd>Stop current account/run</dd></div></dl>
+                <div class="form-grid"><label>Segment ID<input asp-for="Form.SegmentId" /></label><label>Segment name<input asp-for="Form.SegmentName" /></label><label>Maximum pages metadata<input asp-for="Form.MaximumPages" /></label><label>Optional safe filter<input asp-for="Form.SafeFilter" placeholder="Code-owned adapter metadata only" /></label><label>New profiles / run<input asp-for="Form.MaxNewProfilesPerRun" /></label><label>Viewed profiles / run<input asp-for="Form.MaxViewedProfilesPerRun" /></label><label>New profiles / day<input asp-for="Form.MaxNewProfilesPerDay" /></label><label>Maximum runtime (seconds)<input asp-for="Form.MaxRuntimeSeconds" /></label><label>Cooldown / fixed-delay preference (seconds)<input asp-for="Form.CooldownSeconds" /></label><label>Minimum parser completeness<input asp-for="Form.MinimumParserCompleteness" step="0.05" /></label></div>
+                <label class="check-row danger"><input asp-for="Form.StoreRawHtml" /><span><strong>Retain bounded sanitized raw HTML</strong><small>Privacy warning: enable only for short-lived parser diagnostics. Photographs, form values, and session payloads remain excluded.</small></span></label>
+            </section>
+            <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.BrowserAccount">Back</a><button class="primary" type="submit">Save source limits</button></div>
+        </form>
+    }
+    else if (step == FounderScoutOnboardingSteps.Policy)
+    {
+        <form method="post" asp-page-handler="Policy" class="stack founder-wizard-form">
+            <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" />
+            <section class="panel"><p class="eyebrow">Step 4 of 7</p><h2>Screening, founder quality, and local fit</h2><p>Founder quality and fit to your local persona remain separate. Invitation priority is calculated independently, and all drafts require human review.</p>
+                <div class="form-grid"><label>Strong-connect threshold<input asp-for="Form.StrongThreshold" /></label><label>Exploratory threshold<input asp-for="Form.ExploratoryThreshold" /></label><label>Monitor threshold<input asp-for="Form.MonitorThreshold" /></label><label>Minimum confidence<input asp-for="Form.MinimumConfidence" step="0.05" /></label><label>Primary review queue<input asp-for="Form.PrimaryQueueCapacity" /></label><label>Reserve queue<input asp-for="Form.ReserveQueueCapacity" /></label><label>Draft maximum characters<input asp-for="Form.DraftMaximumCharacters" /></label></div>
+                <div class="notice info"><strong>Protected attributes are never weights</strong><span>The scorecard uses relevant founder evidence, explicit risk/activity policy, and C# arithmetic. Missing evidence lowers confidence; the system does not invent it.</span></div>
+                <h3>Local founder persona <span class="pill attention">Sensitive local configuration</span></h3><p>This content is visible only on its authorized edit form. It is never written to readiness-check rows, provider checks, or logs.</p>
+                <div class="form-grid"><label>Display name<input asp-for="Form.PersonaDisplayName" /></label><label>Target role<input asp-for="Form.PersonaTargetRole" /></label><label class="wide">Strengths<textarea asp-for="Form.PersonaStrengths" rows="4"></textarea></label><label class="wide">Seeking<textarea asp-for="Form.PersonaSeeking" rows="4"></textarea></label><label class="wide">Draft tone<input asp-for="Form.PersonaMessageTone" /></label></div>
+                <details><summary>Advanced retention</summary><div class="form-grid"><label>Raw profile days<input asp-for="Form.RawProfileDays" /></label><label>Error artifact days<input asp-for="Form.ErrorArtifactDays" /></label><label>Derived report days<input asp-for="Form.ReportDays" /></label></div></details>
+            </section>
+            <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Source">Back</a><button class="primary" type="submit">Save policy</button></div>
+        </form>
+    }
+    else if (step == FounderScoutOnboardingSteps.Ai)
+    {
+        <section class="panel"><p class="eyebrow">Step 5 of 7</p><h2>Optional AI provider and protected key</h2><p>Capture-and-screen mode can skip this step. Deep analysis supports the existing OpenAI Responses and Azure OpenAI v1 Responses-compatible providers.</p>
+            <form method="post" asp-page-handler="Ai" class="stack founder-wizard-form"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" />
+                <div class="form-grid"><label>Provider<select asp-for="Form.AiProvider"><option value="OpenAI">OpenAI Responses API</option><option value="AzureOpenAI">Azure OpenAI v1 Responses</option>@if (Model.ShowDiagnosticFake) { <option value="DiagnosticFake">DiagnosticFake — development/test only</option> }</select></label><label>HTTPS endpoint<input asp-for="Form.AiEndpoint" placeholder="OpenAI may use the default endpoint" /></label><label>Model / deployment<input asp-for="Form.AiDeployment" /></label><label>Timeout (seconds)<input asp-for="Form.AiTimeoutSeconds" /></label><label>Maximum output tokens<input asp-for="Form.AiMaxOutputTokens" /></label><label>Prompt and scorecard versions<input value="@FounderEvaluationPromptCatalog.CurrentPromptVersion / @FounderEvaluationScorecard.Version" readonly /></label></div>
+                <button class="primary" type="submit">Save provider metadata</button>
+            </form>
+            <hr /><h3>Protected API key</h3><p>Status: <span class="pill @(editor.SecretExists ? "positive" : "attention")">@(editor.SecretExists ? "Configured" : "Not configured")</span>. The key is held under the current Windows user and is never prefilled or redisplayed.</p>
+            <form method="post" asp-page-handler="SetSecret" class="inline-secret-form"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" /><label>New provider key<input name="secretValue" type="password" required maxlength="65536" autocomplete="new-password" /></label><button class="secondary" type="submit">Store / replace key</button></form>
+            <form method="post" asp-page-handler="DeleteSecret" class="onboarding-secret-action"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" /><button class="danger" type="submit">Delete protected key</button></form>
+        </section>
+        <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Policy">Back</a><a class="button-link primary" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Checks">Continue to checks</a></div>
+    }
+    else if (step == FounderScoutOnboardingSteps.Checks)
+    {
+        <section class="panel"><p class="eyebrow">Step 6 of 7</p><h2>Browser, provider, and headed authentication</h2><p>Each action is explicit. Nothing here starts discovery.</p>
+            <div class="readiness-grid">
+                <article class="readiness-card"><div class="panel-heading"><h3>Browser runtime</h3><span class="pill">@(editor.Checks.GetValueOrDefault(FounderScoutOnboardingChecks.BrowserRuntime)?.Status.ToString() ?? "Not run")</span></div><p>@(editor.Checks.GetValueOrDefault(FounderScoutOnboardingChecks.BrowserRuntime)?.Message ?? "Checks the pinned Playwright package/runtime without downloading a browser.")</p><form method="post" asp-page-handler="TestBrowser"><input type="hidden" asp-for="SessionId" /><button class="secondary" type="submit">Check browser runtime</button></form><p class="supporting">Repair if missing: <code>pwsh src/HomeBusinessAssistant.Host/bin/Release/net10.0-windows/playwright.ps1 install chromium</code>. Review network and disk impact before running it manually.</p></article>
+                <article class="readiness-card"><div class="panel-heading"><h3>AI provider</h3><span class="pill">@(editor.Checks.GetValueOrDefault(FounderScoutOnboardingChecks.Provider)?.Status.ToString() ?? "Not run")</span></div><p>@(editor.Checks.GetValueOrDefault(FounderScoutOnboardingChecks.Provider)?.Message ?? (editor.Mode == FounderScoutOnboardingMode.DeepAnalysis ? "Required for deep analysis." : "Optional in capture-and-screen mode."))</p><form method="post" asp-page-handler="TestProvider" class="stack"><input type="hidden" asp-for="SessionId" /><label class="check-row danger"><input asp-for="Form.ConfirmProviderCharge" /><span><strong>Run one provider network request</strong><small>This minimal test may incur a small provider charge. It contains no founder, profile, or persona data and is not retried automatically.</small></span></label><button class="secondary" type="submit">Test provider once</button></form></article>
+                <article class="readiness-card"><div class="panel-heading"><h3>Headed authentication</h3><span class="pill">@(editor.BrowserAccounts.Count == 0 ? "Account required" : editor.BrowserAccounts[0].SessionStatus.ToString())</span></div><p>Runner opens the selected dedicated browser. Enter credentials only on the source site in that browser.</p><form method="post" asp-page-handler="Authenticate" class="stack"><input type="hidden" asp-for="SessionId" /><label>Account<select asp-for="Form.AccountId">@foreach (BrowserAccount account in editor.BrowserAccounts) { <option value="@account.Id">@account.DisplayName — @account.SessionStatus</option> }</select></label><label class="check-row danger"><input asp-for="Form.ConfirmHeadedAuthentication" /><span><strong>Open a headed browser now</strong><small>Requires the current interactive Windows user. Keep-awake is released when the run ends.</small></span></label><button class="primary" type="submit" disabled="@(editor.BrowserAccounts.Count == 0 ? "disabled" : null)">Authenticate interactively</button></form></article>
+            </div>
+            @if (editor.AuthenticationOccurrence is not null) { <div class="notice info" role="status"><strong>Authentication occurrence @editor.AuthenticationOccurrence.Id</strong><span>Occurrence: @editor.AuthenticationOccurrence.Status · Run: @(editor.AuthenticationRun?.Status.ToString() ?? "Waiting for Runner") · Account state: @(editor.BrowserAccounts.Count > 0 ? editor.BrowserAccounts[0].SessionStatus.ToString() : "Unknown"). Refresh to poll persisted status.</span></div> }
+            <div class="notice warning"><strong>Safe-stop states</strong><span>Authentication required, challenge detected, access denied, throttled, timed out, unexpected host, and unknown are reported without cookies or session details. Discovery never follows automatically.</span></div>
+        </section>
+        <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Ai">Back</a><a class="button-link primary" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Review">Review setup</a></div>
+    }
+    else
+    {
+        <section class="panel"><p class="eyebrow">Step 7 of 7</p><h2>Review configuration and readiness</h2>
+            <div class="review-grid"><article><h3>Account and source</h3><dl><dt>Account</dt><dd>@(editor.BrowserAccounts.Count > 0 ? editor.BrowserAccounts[0].DisplayName : "Not configured")</dd><dt>Segment</dt><dd>@(editor.Segments.Count > 0 ? editor.Segments[0].Name : "Not configured")</dd><dt>Per-run bounds</dt><dd>@editor.Configuration.Discovery.MaxNewProfilesPerRun new / @editor.Configuration.Discovery.MaxViewedProfilesPerRun viewed</dd></dl></article><article><h3>Processing</h3><dl><dt>Mode</dt><dd>@(editor.Mode == FounderScoutOnboardingMode.DeepAnalysis ? "Deep analysis" : "Capture and screen")</dd><dt>Provider</dt><dd>@editor.Configuration.Ai.Provider · @editor.Configuration.Ai.Deployment</dd><dt>Protected key</dt><dd>@(editor.SecretExists ? "Configured" : "Not configured")</dd></dl></article><article><h3>Privacy and revisions</h3><dl><dt>Raw HTML</dt><dd>@((editor.Configuration.StartupSchool ?? StartupSchoolSourceOptions.Default).StoreRawHtml ? "Retained (warning)" : "Not retained")</dd><dt>Raw profile retention</dt><dd>@editor.Configuration.Retention.RawProfileDays days</dd><dt>Revision</dt><dd>@editor.ConfigurationRecord.CurrentRevision.RevisionNumber · <code>@editor.ConfigurationRecord.CurrentRevision.ConfigurationHash[..12]</code></dd></dl></article></div>
+            @if (editor.Blockers.Count == 0) { <div class="notice success"><strong>Ready for Stage 22 validation</strong><span>Chosen prerequisites pass. The agent is still disabled; no diagnostic, schedule, discovery, analysis, or sending occurred.</span></div> } else { <div class="notice warning"><strong>@editor.Blockers.Count blocker(s) remain</strong><ul>@foreach (string blocker in editor.Blockers) { <li>@blocker</li> }</ul></div> }
+            <form method="post" asp-page-handler="Review"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="Form.ExpectedSelectionRevision" /><button class="primary" type="submit">Save review state</button></form>
+        </section>
+        <div class="wizard-actions"><a class="button-link ghost" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@Model.SessionId" asp-route-step="@FounderScoutOnboardingSteps.Checks">Back</a><a class="button-link secondary" asp-page="/Onboarding/Agents" asp-route-sessionId="@Model.SessionId">Return to agents</a><a class="button-link ghost" asp-page="/Index">Exit to dashboard</a></div>
+    }
+}

@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.4xx
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet build HomeBusinessAssistant.sln -c Release --no-restore
+
+      - name: Test Release
+        run: dotnet test HomeBusinessAssistant.sln -c Release --no-build
+
+      - name: Verify formatting
+        run: dotnet format HomeBusinessAssistant.sln --verify-no-changes --no-restore

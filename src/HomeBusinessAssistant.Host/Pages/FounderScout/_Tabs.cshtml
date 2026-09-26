@@ -1,0 +1,6 @@
+<nav class="tabs" aria-label="Founder Scout sections">
+    <a asp-page="/FounderScout/Index" aria-current="@(Context.Request.Path == "/FounderScout" || Context.Request.Path == "/FounderScout/Index" ? "page" : null)">Overview</a>
+    <a asp-page="/FounderScout/Candidates/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/FounderScout/Candidates") ? "page" : null)">Candidates</a>
+    <a asp-page="/FounderScout/Queue/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/FounderScout/Queue") ? "page" : null)">Manual queue</a>
+    <a asp-page="/FounderScout/Operations/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/FounderScout/Operations") ? "page" : null)">Operations &amp; reports</a>
+</nav>

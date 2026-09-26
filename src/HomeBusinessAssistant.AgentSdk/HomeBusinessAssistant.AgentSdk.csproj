@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HomeBusinessAssistant.Domain\HomeBusinessAssistant.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="agent-manifest.schema.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Pack="true"
+          PackagePath="contentFiles/any/any/" />
+  </ItemGroup>
+
+</Project>

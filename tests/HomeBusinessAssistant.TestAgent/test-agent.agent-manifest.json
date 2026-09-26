@@ -1,0 +1,33 @@
+{
+  "manifestVersion": "1.0",
+  "id": "test-agent",
+  "displayName": "Runner Test Agent",
+  "description": "Deterministic process fixture for Runner supervision tests.",
+  "version": "1.0.0",
+  "executable": "HomeBusinessAssistant.TestAgent.exe",
+  "supportedCommands": [
+    "success",
+    "fail",
+    "emit-all-events",
+    "delayed-heartbeats",
+    "hang",
+    "ignore-cancellation",
+    "malformed-json",
+    "out-of-order-sequence",
+    "oversized-line",
+    "artifact-success",
+    "artifact-missing",
+    "artifact-tampering",
+    "artifact-traversal",
+    "stderr-burst",
+    "no-summary",
+    "unknown-future-event"
+  ],
+  "capabilities": ["runner-test-fixture"],
+  "defaultTimeoutSeconds": 5,
+  "defaultConcurrencyPolicy": "Forbid",
+  "supportsScheduling": true,
+  "supportsManualRun": true,
+  "requiresInteractiveUserSession": false,
+  "configurationSchemaVersion": "1.0"
+}

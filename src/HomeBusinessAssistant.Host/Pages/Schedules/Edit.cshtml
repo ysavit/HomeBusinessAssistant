@@ -1,0 +1,66 @@
+@page "/Schedules/edit/{id:guid?}"
+@model HomeBusinessAssistant.Host.Pages.Schedules.EditModel
+@using HomeBusinessAssistant.Domain.Agents
+@{
+    ViewData["Title"] = Model.Form.Id.HasValue ? "Edit schedule" : "Create schedule";
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Typed schedule editor</p><h1>@(Model.Form.Id.HasValue ? "Edit schedule" : "Create schedule")</h1><p>Preview uses the production calculator, including Windows time-zone and DST rules.</p></div>
+    <a class="button-link ghost" asp-page="/Schedules/Index">Back to schedules</a>
+</header>
+
+<div class="content-grid">
+    <form method="post" class="form-shell">
+        <input asp-for="Form.Id" type="hidden" /><input asp-for="Form.ExpectedConcurrencyToken" type="hidden" /><input asp-for="Form.CreatedAtUtc" type="hidden" />
+        <div asp-validation-summary="ModelOnly"></div>
+        <section class="form-section">
+            <h2>Identity</h2>
+            <div class="form-grid">
+                <div><label asp-for="Form.Name">Schedule name</label><input asp-for="Form.Name" maxlength="100" /><span asp-validation-for="Form.Name"></span></div>
+                <div><label asp-for="Form.AgentId">Agent</label><select asp-for="Form.AgentId" data-agent-select>@foreach (var agent in Model.Agents) { <option value="@agent.Definition.Id.Value" data-commands="@agent.Definition.SupportedCommandsJson">@agent.Definition.DisplayName (@agent.Definition.Id.Value)</option> }</select><span asp-validation-for="Form.AgentId"></span></div>
+                <div><label asp-for="Form.CommandName">Manifest command</label><select asp-for="Form.CommandName" data-command-select>@foreach (var command in Model.AvailableCommands) { <option value="@command">@command</option> }</select><p class="field-help">Commands come from the selected installed manifest and are validated again by the server.</p><span asp-validation-for="Form.CommandName"></span></div>
+                <div><label asp-for="Form.TimeZoneId">Windows time zone</label><input asp-for="Form.TimeZoneId" /><span asp-validation-for="Form.TimeZoneId"></span></div>
+            </div>
+        </section>
+        <section class="form-section">
+            <h2>Timing</h2>
+            <div class="form-grid">
+                <div><label asp-for="Form.Kind">Schedule type</label><select asp-for="Form.Kind" asp-items="Html.GetEnumSelectList<ScheduleKind>()"></select></div>
+                <div><label asp-for="Form.LocalTime">Daily/weekday local time</label><input asp-for="Form.LocalTime" type="time" /><span asp-validation-for="Form.LocalTime"></span></div>
+                <div><label asp-for="Form.OneTimeLocal">One-time local date/time</label><input asp-for="Form.OneTimeLocal" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}" /></div>
+                <div><label asp-for="Form.AnchorUtc">Fixed-interval UTC anchor</label><input asp-for="Form.AnchorUtc" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}" /></div>
+                <div><label asp-for="Form.IntervalMinutes">Fixed interval (minutes)</label><input asp-for="Form.IntervalMinutes" type="number" min="1" max="525600" /></div>
+                <div><label asp-for="Form.DelayMinutes">Fixed delay after completion (minutes)</label><input asp-for="Form.DelayMinutes" type="number" min="1" max="525600" /></div>
+                <div><label class="check"><input asp-for="Form.StartImmediately" /> Start fixed-delay schedule immediately</label><label asp-for="Form.InitialDueUtc">Otherwise initial UTC due</label><input asp-for="Form.InitialDueUtc" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}" /></div>
+                <fieldset class="wide"><legend>Selected weekdays</legend><div class="inline-actions">@foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>()) { <label class="check"><input type="checkbox" name="Form.Weekdays" value="@day" checked="@Model.Form.Weekdays.Contains(day)" /> @day</label> }</div><span asp-validation-for="Form.Weekdays"></span></fieldset>
+            </div>
+            <p class="field-help">Spring-forward gaps move to the first valid local second. Fall-back overlaps use the larger offset, producing the earlier UTC instant.</p>
+        </section>
+        <section class="form-section">
+            <h2>Execution policy</h2>
+            <div class="form-grid">
+                <div><label asp-for="Form.MisfirePolicy">Misfire policy</label><select asp-for="Form.MisfirePolicy" asp-items="Html.GetEnumSelectList<MisfirePolicy>()"></select></div>
+                <div><label asp-for="Form.ConcurrencyPolicy">Concurrency policy</label><select asp-for="Form.ConcurrencyPolicy" asp-items="Html.GetEnumSelectList<ConcurrencyPolicy>()"></select></div>
+                <div><label asp-for="Form.WakePolicy">Wake policy</label><select asp-for="Form.WakePolicy" asp-items="Html.GetEnumSelectList<WakePolicy>()"></select></div>
+                <div><label asp-for="Form.TimeoutMinutes">Timeout (minutes)</label><input asp-for="Form.TimeoutMinutes" type="number" min="1" max="1440" /><span asp-validation-for="Form.TimeoutMinutes"></span></div>
+                <div><label asp-for="Form.MisfireGraceMinutes">Misfire grace (minutes)</label><input asp-for="Form.MisfireGraceMinutes" type="number" min="0" max="60" /></div>
+                <div><label asp-for="Form.MaximumRetries">Maximum retries</label><input asp-for="Form.MaximumRetries" type="number" min="0" max="10" /></div>
+                <div><label asp-for="Form.InitialRetryMinutes">Initial retry delay (minutes)</label><input asp-for="Form.InitialRetryMinutes" type="number" min="1" max="1440" /></div>
+                <div><label asp-for="Form.MaximumRetryMinutes">Maximum retry delay (minutes)</label><input asp-for="Form.MaximumRetryMinutes" type="number" min="1" max="10080" /></div>
+                <div><label class="check"><input asp-for="Form.IsEnabled" /> Enabled</label><label class="check"><input asp-for="Form.IsPaused" /> Paused</label></div>
+                <div><label asp-for="Form.PausedUntilUtc">Pause until UTC (blank = indefinitely)</label><input asp-for="Form.PausedUntilUtc" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}" /></div>
+            </div>
+        </section>
+        <section class="form-section">
+            <h2>Wake &amp; Remote typed arguments</h2>
+            <div class="form-grid"><div><label asp-for="Form.WindowDurationMinutes">Availability window (minutes)</label><input asp-for="Form.WindowDurationMinutes" type="number" min="1" max="1440" /></div><div><label class="check"><input asp-for="Form.RemoteProviderRequired" /> Remote provider readiness is required</label></div></div>
+            <p class="field-help">These fields are used only for Wake &amp; Remote’s <span class="code">run</span> command. Other schedules persist an empty typed argument object; arbitrary executable arguments are not accepted.</p>
+        </section>
+        <section class="form-section"><div class="page-actions"><button type="submit" asp-page-handler="Preview" class="secondary">Preview next 5</button><button type="submit" asp-page-handler="Save" class="primary">Save and reconcile</button><a class="button-link ghost" asp-page="/Schedules/Index">Cancel</a></div></section>
+    </form>
+    <aside class="stack">
+        <section class="panel"><div class="panel-heading"><h2>Next occurrences</h2></div>@if (Model.Preview.Count == 0) { <p class="empty-state">Choose Preview next 5. Manual schedules intentionally have no calculated slots.</p> } else { <ol class="timeline">@foreach (var due in Model.Preview) { <li><time datetime="@due.ToString("O")">@due.ToLocalTime().ToString("g")</time><div><strong>@due.ToString("u")</strong><span>Local display / durable UTC</span></div></li> }</ol> }</section>
+        <section class="panel"><div class="panel-heading"><h2>Safety</h2></div><p class="supporting">Saving validates agent enablement, manifest command support, current configuration, retry/timeout bounds, time zone, name uniqueness, and policy compatibility before any occurrence is created.</p></section>
+    </aside>
+</div>

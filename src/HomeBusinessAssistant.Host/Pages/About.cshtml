@@ -1,0 +1,13 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.AboutModel
+@{
+    ViewData["Title"] = "About";
+}
+
+<header class="page-header"><div><p class="eyebrow">Installed release</p><h1>About</h1><p>Build, runtime, migration, and agent identities used by diagnostics and operational audit.</p></div></header>
+
+<section class="facts-strip" aria-label="Build identity"><div class="fact"><span>Product</span><strong>@Model.Build.ProductVersion</strong></div><div class="fact"><span>Commit</span><strong class="code">@Model.Build.GitCommit</strong></div><div class="fact"><span>Build UTC</span><strong>@Model.Build.BuildUtc</strong></div><div class="fact"><span>Runtime target</span><strong>@Model.Build.RuntimeTarget</strong></div></section>
+
+<div class="content-grid"><section class="panel"><div class="panel-heading"><h2>Platform</h2></div><ul class="detail-list"><li><strong>Target framework</strong><span class="supporting">@Model.Build.Framework</span></li><li><strong>Central migration</strong><span class="supporting code">@(Model.Database?.Migration ?? "unavailable")</span></li><li><strong>Founder Scout migration</strong><span class="supporting code">@Model.FounderDatabaseMigration</span></li><li><strong>SQLite journal</strong><span class="supporting">@(Model.Database?.JournalMode ?? "unavailable")</span></li></ul></section><section class="panel"><div class="panel-heading"><h2>Installed agents</h2></div>@if (Model.Agents.Count == 0) { <p class="empty-state">No installed agent definitions.</p> } else { <ul class="detail-list">@foreach (var item in Model.Agents) { <li><strong>@item.Definition.DisplayName</strong><span class="supporting">agent @item.Definition.InstalledVersion · manifest @item.Definition.ManifestVersion</span></li> }</ul> }</section></div>
+
+<section class="panel"><div class="panel-heading"><h2>Restore boundary</h2></div><p>Restore is intentionally command-line only in V1. Stop the Host and all runs, then use <code>HomeBusinessAssistant.Runner.exe restore-backup --backup-set &lt;id&gt; --maintenance true --confirm RESTORE</code>. A pre-restore backup and rollback files protect both databases; DPAPI secrets and browser profiles are unchanged.</p></section>

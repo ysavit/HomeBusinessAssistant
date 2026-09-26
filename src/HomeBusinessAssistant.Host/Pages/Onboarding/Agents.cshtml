@@ -1,0 +1,106 @@
+@page "/Onboarding/Agents"
+@model HomeBusinessAssistant.Host.Pages.Onboarding.AgentsModel
+@using HomeBusinessAssistant.Application.Onboarding
+@{
+    ViewData["Title"] = "Choose agents";
+    AgentSelectionOverview? overview = Model.Overview;
+}
+
+<header class="page-header onboarding-header">
+    <div><p class="eyebrow">First-run · Agent selection</p><h1>Choose what this workstation should help with.</h1><p>Installed does not mean selected. Review each agent and choose <strong>Select now</strong> or leave it for later. Nothing on this page enables, schedules, or runs an agent.</p></div>
+    <a class="button-link ghost" asp-page="/Agents/Index">Installed-agent details</a>
+</header>
+
+@if (overview is null)
+{
+    <section class="panel"><p class="empty-state">Agent onboarding is unavailable.</p></section>
+}
+else if (overview.Session.Status == OnboardingSessionStatus.Deferred)
+{
+    <section class="panel onboarding-callout"><p class="eyebrow">Saved for later</p><h2>This session is paused.</h2><p>Resume the same session from the dashboard. Existing configuration and schedules remain unchanged.</p><a class="button-link primary" asp-page="/Onboarding" asp-route-sessionId="@overview.Session.Id">Resume setup</a></section>
+}
+else
+{
+    <ol class="onboarding-steps" aria-label="Onboarding progress">
+        <li class="complete"><span>1</span><strong>Welcome</strong></li>
+        <li class="complete"><span>2</span><strong>Readiness</strong></li>
+        <li class="@(overview.Session.CurrentStep == OnboardingSteps.AgentSelectionPending ? "current" : "complete")" aria-current="@(overview.Session.CurrentStep == OnboardingSteps.AgentSelectionPending ? "step" : null)"><span>3</span><strong>Choose agents</strong></li>
+        <li class="@(overview.Session.CurrentStep == OnboardingSteps.AgentConfiguration ? "current" : null)" aria-current="@(overview.Session.CurrentStep == OnboardingSteps.AgentConfiguration ? "step" : null)"><span>4</span><strong>Agent setup</strong></li>
+        <li><span>5</span><strong>Diagnostic &amp; schedule</strong></li>
+    </ol>
+
+    <section class="onboarding-summary" aria-label="Agent selection summary">
+        <div><span>Available</span><strong>@overview.AvailableCount</strong></div>
+        <div><span>Pending review</span><strong>@overview.PendingCount</strong></div>
+        <div><span>Selected</span><strong>@overview.SelectedCount</strong></div>
+        <div><span>Configure later</span><strong>@overview.DeferredCount</strong></div>
+    </section>
+
+    <form method="post" asp-page-handler="Save" class="stack">
+        <input type="hidden" asp-for="SessionId" />
+        <input type="hidden" asp-for="ExpectedRevision" />
+        @if (overview.Agents.Count == 0)
+        {
+            <section class="panel"><p class="empty-state">No registered agent packages are available. Use repair or <code>scan-agents</code>, then rerun readiness.</p></section>
+        }
+        else
+        {
+            <div class="agent-choice-grid">
+            @foreach (AgentOnboardingCard agent in overview.Agents)
+            {
+                bool selectable = agent.Package.IsAvailable && agent.Support != AgentOnboardingSupport.TypedAdapterRequired;
+                bool selected = agent.Selection?.SelectionStatus == OnboardingAgentSelectionStatus.Selected;
+                <article class="panel agent-choice-card @(selectable ? string.Empty : "unavailable")">
+                    <div class="panel-heading">
+                        <div><p class="eyebrow">@agent.Definition.Id.Value</p><h2>@agent.Definition.DisplayName</h2></div>
+                        <span class="pill @(agent.ReadyForValidation ? "positive" : agent.IsPending ? "attention" : "muted")">@(agent.ReadyForValidation ? "Ready for validation" : agent.IsPending ? "Pending" : "Reviewed")</span>
+                    </div>
+                    <p>@agent.Definition.Description</p>
+                    <dl class="agent-choice-facts">
+                        <div><dt>Installed version</dt><dd>@agent.Package.InstalledVersion</dd></div>
+                        <div><dt>Configuration schema</dt><dd>@(agent.Package.ConfigurationSchemaVersion ?? "Unavailable")</dd></div>
+                        <div><dt>Current configuration</dt><dd>@(agent.IsConfigured ? "Valid" : "Needs attention")</dd></div>
+                        <div><dt>Onboarding support</dt><dd>@(agent.Support == AgentOnboardingSupport.SafeGeneric ? "Safe generic" : agent.Support == AgentOnboardingSupport.Specialized ? "Specialized" : "Typed adapter required")</dd></div>
+                        <div><dt>Run capabilities</dt><dd>@(agent.Definition.SupportsManualRun ? "Manual" : "No manual run") · @(agent.Definition.SupportsScheduling ? "Scheduling" : "No scheduling")</dd></div>
+                        <div><dt>Session / wake</dt><dd>@(agent.Definition.RequiresInteractiveUserSession ? "Interactive session required" : "No interactive session declared")</dd></div>
+                        <div><dt>Enabled state</dt><dd>@(agent.Definition.Enabled ? "Currently enabled (unchanged)" : "Disabled")</dd></div>
+                        <div><dt>Progress</dt><dd>@(agent.Selection?.ProgressStatus.ToString() ?? "Not started")</dd></div>
+                    </dl>
+                    <div class="notice @(selectable ? "info" : "warning")" role="status"><strong>@agent.PendingReasonCode</strong><span>@agent.PendingMessage</span></div>
+                    @if (selectable)
+                    {
+                        <label class="agent-choice-toggle" for="agent-@agent.Definition.Id.Value">
+                            <input id="agent-@agent.Definition.Id.Value" type="checkbox" name="SelectedAgentIds" value="@agent.Definition.Id.Value" checked="@(selected ? "checked" : null)" />
+                            <span><strong>Select now</strong><small>Clear this choice to configure later.</small></span>
+                        </label>
+                        @if (selected && agent.Support == AgentOnboardingSupport.SafeGeneric)
+                        {
+                            <a class="button-link secondary" asp-page="/Onboarding/Agent" asp-route-sessionId="@overview.Session.Id" asp-route-agentId="@agent.Definition.Id.Value">Continue setup</a>
+                        }
+                        else if (selected && agent.Support == AgentOnboardingSupport.Specialized)
+                        {
+                            @if (agent.Definition.Id.Value == "founder-scout")
+                            {
+                                <div class="inline-actions"><a class="button-link secondary" asp-page="/Onboarding/FounderScout" asp-route-sessionId="@overview.Session.Id" asp-route-step="purpose">Continue guided setup</a><a class="button-link ghost" asp-page="/Agents/Configuration" asp-route-id="@agent.Definition.Id.Value">Agent Settings</a></div>
+                            }
+                            else
+                            {
+                                <div class="inline-actions"><a class="button-link ghost" asp-page="/Agents/Configuration" asp-route-id="@agent.Definition.Id.Value">Open existing Agent Settings</a><span class="supporting">Wake &amp; Remote guided setup arrives in Stage 21.</span></div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        <div class="inline-actions"><a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@agent.Definition.Id.Value">Package diagnostics</a><span class="supporting">This agent cannot be selected safely.</span></div>
+                    }
+                </article>
+            }
+            </div>
+        }
+
+        <section class="panel onboarding-actions">
+            <div><h2>Save agent choices</h2><p>You may defer every agent. That pauses onboarding, keeps all agents disabled unless they were already enabled before reconfiguration, and leaves a dashboard reminder.</p></div>
+            <div class="inline-actions"><button class="primary" type="submit">Save choices</button><a class="button-link ghost" asp-page="/Index">Exit without changing</a></div>
+        </section>
+    </form>
+}

@@ -1,0 +1,70 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.IndexModel
+@using HomeBusinessAssistant.Domain.Agents
+@{
+    ViewData["Title"] = "Dashboard";
+    int failureCount = Model.Snapshot.Platform.RecentFailures.Count;
+    int attentionCount = Model.Attention.Count;
+    int enabledCount = Model.Agents.Count(item => item.Definition.Enabled);
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Local control plane</p><h1>Good work starts with a quiet system.</h1><p>Schedule, supervise, and review your local agents from this Windows workstation.</p></div>
+    <div class="page-actions"><a class="button-link primary" asp-page="/Agents/Index">Run agent</a><form method="post" asp-page-handler="Reconcile"><button class="secondary">Reconcile now</button></form><a class="button-link ghost" asp-page="/Schedules/Edit">Create schedule</a></div>
+</header>
+
+@if (Model.Onboarding?.ShowResumeReminder == true)
+{
+    <section class="onboarding-banner" role="status">
+        <div><strong>@(Model.Onboarding.Session.Status == HomeBusinessAssistant.Application.Onboarding.OnboardingSessionStatus.Deferred ? "Setup is saved for later." : "Readiness review is in progress.")</strong><span>Resume the same readiness session when you are ready. Existing settings, schedules, and run history are unchanged.</span></div>
+        <div class="inline-actions"><a class="button-link primary" asp-page="/Onboarding" asp-route-sessionId="@Model.Onboarding.Session.Id">Resume setup</a><form method="post" asp-page-handler="DismissOnboarding"><input type="hidden" asp-for="OnboardingSessionId" value="@Model.Onboarding.Session.Id" /><button class="ghost">Dismiss for this session</button></form></div>
+    </section>
+}
+else if (Model.Onboarding?.ShowReviewInvitation == true)
+{
+    <section class="onboarding-banner neutral" role="status">
+        <div><strong>Readiness review available.</strong><span>This established installation was not treated as a fresh setup. You can run the new platform readiness review when convenient.</span></div>
+        <a class="button-link secondary" asp-page="/Onboarding" asp-route-sessionId="@Model.Onboarding.Session.Id">Review readiness</a>
+    </section>
+}
+
+@if (Model.AgentOnboarding?.HasPendingAgents == true)
+{
+    <section class="onboarding-banner neutral" role="status">
+        <div><strong>New agent available — Set up.</strong><span>@Model.AgentOnboarding.PendingAgentCount installed agent(s) need an explicit review. Your current page, running work, schedules, and enabled states are unchanged.</span></div>
+        <form method="post" asp-page-handler="StartAgentOnboarding"><button class="secondary">Add or configure agents</button></form>
+    </section>
+}
+
+<section class="facts-strip" aria-label="Platform summary">
+    <div class="fact"><span>Platform health</span><strong><span class="status-dot @(Model.Snapshot.IsReady ? "ready" : "attention")" aria-hidden="true"></span>@(Model.Snapshot.IsReady ? "Ready" : "Attention")</strong></div>
+    <div class="fact"><span>Host uptime</span><strong>@Model.Uptime.ToString("g")</strong></div>
+    <div class="fact"><span>Agents</span><strong>@enabledCount enabled · @attentionCount attention</strong></div>
+    <div class="fact"><span>Active runs</span><strong>@Model.Snapshot.Platform.ActiveRuns.Count</strong></div>
+    <div class="fact"><span>Recent failures</span><strong>@failureCount</strong></div>
+</section>
+
+<section class="toolbar" aria-label="Global scheduling controls">
+    <div><strong>@(Model.Snapshot.GlobalPause.IsPaused ? "All agent schedules are paused" : "Agent schedules are active")</strong><span>Manual occurrences remain explicit, validated, and audited.</span></div>
+    @if (Model.Snapshot.GlobalPause.IsPaused) { <form method="post" asp-page-handler="ResumeAll" data-confirm="Resume only the schedules changed by the last global pause?"><button class="primary">Resume all</button></form> }
+    else { <form method="post" asp-page-handler="PauseAll" data-confirm="Pause every currently active schedule? Running work will not be terminated."><button class="danger">Pause all</button></form> }
+</section>
+
+<div class="content-grid">
+    <div class="stack">
+        <section class="table-shell" aria-labelledby="agents-title">
+            <div class="panel panel-heading"><h2 id="agents-title">Agents</h2><a asp-page="/Agents/Index">Manage agents</a></div>
+            @if (Model.Agents.Count == 0) { <p class="empty-state">No installed agent manifests were found.</p> }
+            else { <div class="table-scroll"><table><thead><tr><th>Agent</th><th>Status</th><th>Active run</th><th>Next occurrence</th><th>Last result</th><th>Action</th></tr></thead><tbody>@foreach (var item in Model.Agents) { <tr><td><strong><a asp-page="/Agents/Details" asp-route-id="@item.Definition.Id.Value">@item.Definition.DisplayName</a></strong><span class="supporting code">@item.Definition.Id.Value</span></td><td><span class="pill @(item.AttentionReason is null && item.Definition.Enabled ? "positive" : item.Definition.Enabled ? "attention" : "muted")">@(item.Definition.Enabled ? item.AttentionReason ?? "Ready" : "Disabled")</span></td><td>@(item.ActiveRunStatus?.ToString() ?? "—")</td><td>@(item.NextOccurrenceAtUtc?.ToLocalTime().ToString("g") ?? "None")</td><td>@(item.LastRunStatus?.ToString() ?? "No runs")</td><td><a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@item.Definition.Id.Value">Open</a></td></tr> }</tbody></table></div> }
+        </section>
+        <section class="table-shell"><div class="panel panel-heading"><h2>Recent and active runs</h2><a asp-page="/Runs/Index">All runs</a></div>@if (Model.Snapshot.Platform.ActiveRuns.Count == 0 && Model.Snapshot.Platform.LatestSummary is null) { <p class="empty-state">No agents are running and no completed summary is available.</p> } else { <div class="table-scroll"><table><thead><tr><th>Agent</th><th>Status</th><th>Started</th><th>Summary</th></tr></thead><tbody>@foreach (var run in Model.Snapshot.Platform.ActiveRuns) { <tr><td>@run.AgentDisplayName</td><td><span class="pill warning">@run.Status</span></td><td>@run.StartedAtUtc.ToLocalTime().ToString("g")</td><td>@(run.SummaryText ?? "In progress")</td></tr> }@if (Model.Snapshot.Platform.LatestSummary is not null) { var summary = Model.Snapshot.Platform.LatestSummary; <tr><td>@summary.AgentDisplayName</td><td><span class="pill positive">@summary.Status</span></td><td>@summary.StartedAtUtc.ToLocalTime().ToString("g")</td><td>@(summary.SummaryText ?? "Completed")</td></tr> }</tbody></table></div> }</section>
+        <section class="table-shell"><div class="panel panel-heading"><h2>Next scheduled occurrences</h2><a asp-page="/Schedules/Index">Manage schedules</a></div>@if (Model.Snapshot.Platform.NextOccurrences.Count == 0) { <p class="empty-state">No pending occurrences.</p> } else { <div class="table-scroll"><table><thead><tr><th>Due</th><th>Agent</th><th>Command</th><th>Status</th><th>Wake</th></tr></thead><tbody>@foreach (var occurrence in Model.Snapshot.Platform.NextOccurrences) { <tr><td>@occurrence.DueAtUtc.ToLocalTime().ToString("g")<span class="supporting">@occurrence.DueAtUtc.ToString("u")</span></td><td>@occurrence.AgentDisplayName</td><td>@occurrence.CommandName</td><td>@occurrence.Status</td><td>@(occurrence.RequiresWake ? "Required" : "No")</td></tr> }</tbody></table></div> }</section>
+    </div>
+    <aside class="stack" aria-label="System status">
+        <section class="panel"><div class="panel-heading"><h2>System time</h2></div><ul class="detail-list"><li><strong>Local</strong><span class="supporting">@Model.LocalNow.ToString("F")</span></li><li><strong>UTC</strong><span class="supporting">@Model.UtcNow.ToString("u")</span></li><li><strong>Time zone</strong><span class="supporting">@Model.TimeZoneId</span></li></ul></section>
+        <section class="panel"><div class="panel-heading"><h2>Next Windows wake</h2><a asp-page="/WakeRemote/Index">Open</a></div>@if (Model.Snapshot.Wake.ErrorCode is not null) { <p class="empty-state attention-text">@Model.Snapshot.Wake.ErrorCode</p> } else if (!Model.Snapshot.Wake.Exists) { <p class="empty-state">No managed wake task is required.</p> } else { <p><strong>@Model.Snapshot.Wake.DueAtUtc?.ToLocalTime().ToString("g")</strong></p><p class="supporting code">Occurrence @Model.Snapshot.Wake.OccurrenceId</p> }</section>
+        <section class="panel"><div class="panel-heading"><h2>Manual keep-awake</h2></div><p class="empty-state">@(Model.KeepAwake.IsActive ? $"Active until {Model.KeepAwake.ExpiresAtUtc?.ToLocalTime():g}." : "No manual power hold.")</p><a class="button-link ghost" asp-page="/WakeRemote/Index">Manage power</a></section>
+        <section class="panel"><div class="panel-heading"><h2>Attention</h2><a asp-page="/Attention/Index">Open ledger</a></div>@if (!Model.Snapshot.IsReady) { <p class="empty-state attention-text">@string.Join(", ", Model.Snapshot.ReadinessReasonCodes)</p> } else if (attentionCount == 0) { <p class="empty-state">No current attention items.</p> } else { <ul class="compact-list">@foreach (var item in Model.Attention.Take(4)) { <li><strong>@item.Title</strong><span class="supporting">@item.Severity · @item.Status · observed @item.OccurrenceCount time(s)</span></li> }</ul> }</section>
+        <section class="panel"><div class="panel-heading"><h2>Diagnostics</h2></div><div class="inline-actions"><a class="button-link ghost" asp-page="/Settings/Index" asp-page-handler="Diagnostics">Export</a><a class="button-link ghost" asp-page="/Settings/Index">System health</a></div></section>
+    </aside>
+</div>

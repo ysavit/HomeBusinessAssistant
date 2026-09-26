@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0",
+  "agents": [
+    {
+      "id": "founder-scout",
+      "project": "agents/FounderScout/FounderScout.Agent/FounderScout.Agent.csproj",
+      "manifest": "manifests/founder-scout.agent-manifest.json",
+      "configurationSchema": "manifests/founder-scout.configuration.schema.json",
+      "includeByDefault": true
+    },
+    {
+      "id": "wake-remote",
+      "project": "agents/WakeRemote/WakeRemote.Agent/WakeRemote.Agent.csproj",
+      "manifest": "manifests/wake-remote.agent-manifest.json",
+      "configurationSchema": "manifests/wake-remote.configuration.schema.json",
+      "includeByDefault": true
+    },
+    {
+      "id": "sample-business-agent",
+      "project": "agents/SampleBusinessAgent/SampleBusinessAgent.Agent/SampleBusinessAgent.Agent.csproj",
+      "manifest": "agents/SampleBusinessAgent/manifest.json",
+      "configurationSchema": "agents/SampleBusinessAgent/configuration.schema.json",
+      "includeByDefault": false
+    }
+  ]
+}

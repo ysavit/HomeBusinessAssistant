@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Home Business Assistant",
+  "classifications": ["Home Business Assistant", "Agent", "Worker"],
+  "identity": "HomeBusinessAssistant.AgentTemplate",
+  "name": "Home Business Assistant Agent",
+  "shortName": "hba-agent",
+  "sourceName": "SampleBusinessAgent",
+  "preferNameDirectory": true,
+  "symbols": {
+    "agent-id": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "sample-business-agent",
+      "description": "Stable lower-case agent identifier.",
+      "replaces": "sample-business-agent"
+    },
+    "display-name": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "Sample Business Agent",
+      "description": "Human-readable agent display name.",
+      "replaces": "Sample Business Agent"
+    },
+    "platform-root": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "..\\..\\..",
+      "description": "Path from generated projects to the Home Business Assistant repository root.",
+      "replaces": "HbaPlatformRoot"
+    },
+    "includeDomain": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Include an optional Domain project for genuine agent-specific business rules."
+    }
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [".template.config/**", "**/bin/**", "**/obj/**"],
+      "modifiers": [
+        {
+          "condition": "(!includeDomain)",
+          "exclude": ["SampleBusinessAgent.Domain/**"]
+        }
+      ]
+    }
+  ],
+  "primaryOutputs": [
+    { "path": "SampleBusinessAgent.Agent/SampleBusinessAgent.Agent.csproj" },
+    { "path": "SampleBusinessAgent.Tests/SampleBusinessAgent.Tests.csproj" },
+    { "path": "manifest.json" },
+    { "path": "configuration.schema.json" }
+  ]
+}

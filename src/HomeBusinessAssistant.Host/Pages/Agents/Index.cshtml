@@ -1,0 +1,54 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.Agents.IndexModel
+@{
+    ViewData["Title"] = "Agents";
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Installed manifests</p><h1>Agents</h1><p>Enable, configure, schedule, and run independently executable local agents.</p></div>
+</header>
+
+<section class="table-shell" aria-labelledby="agents-table-title">
+    <h2 id="agents-table-title" class="sr-only">Installed agents</h2>
+    @if (!Model.IsAvailable)
+    {
+        <p class="empty-state">Management services are unavailable in this Host composition.</p>
+    }
+    else if (Model.Agents.Count == 0)
+    {
+        <p class="empty-state">No installed agent manifests were found.</p>
+    }
+    else
+    {
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>Agent</th><th>Version</th><th>Status</th><th>Next occurrence</th><th>Active run</th><th>Last result</th><th>Attention</th><th>Actions</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.Agents)
+                {
+                    <tr>
+                        <td><strong><a asp-page="/Agents/Details" asp-route-id="@item.Definition.Id.Value">@item.Definition.DisplayName</a></strong><span class="supporting code">@item.Definition.Id.Value</span></td>
+                        <td>@item.Definition.InstalledVersion<span class="supporting">manifest @item.Definition.ManifestVersion</span></td>
+                        <td><span class="pill @(item.Definition.Enabled && item.ConfigurationRevision.HasValue ? "positive" : "muted")">@(item.Definition.Enabled ? item.ConfigurationRevision.HasValue ? "Ready" : "Needs setup" : "Disabled")</span></td>
+                        <td>@(item.NextOccurrenceAtUtc?.ToLocalTime().ToString("g") ?? "—")<span class="supporting">@item.NextOccurrenceStatus</span></td>
+                        <td>@(item.ActiveRunStatus?.ToString() ?? "—")</td>
+                        <td>@(item.LastRunStatus?.ToString() ?? "No runs")<span class="supporting">@item.LastRunAtUtc?.ToLocalTime().ToString("g")</span></td>
+                        <td>@(item.AttentionReason ?? "None")</td>
+                        <td>
+                            <div class="inline-actions">
+                                <a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@item.Definition.Id.Value">Open</a>
+                                <form method="post" asp-page-handler="Setup"><input type="hidden" name="id" value="@item.Definition.Id.Value" /><button type="submit" class="secondary">@(Model.PendingAgentIds.Contains(item.Definition.Id) ? "Set up" : "Run setup again")</button></form>
+                                <form method="post" asp-page-handler="SetEnabled" data-confirm="@(item.Definition.Enabled ? "Disable this agent? Active runs will continue until explicitly cancelled." : "Enable this agent?")">
+                                    <input type="hidden" name="id" value="@item.Definition.Id.Value" />
+                                    <input type="hidden" name="enabled" value="@(!item.Definition.Enabled)" />
+                                    <button type="submit" class="@(item.Definition.Enabled ? "danger" : "secondary")">@(item.Definition.Enabled ? "Disable" : "Enable")</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>

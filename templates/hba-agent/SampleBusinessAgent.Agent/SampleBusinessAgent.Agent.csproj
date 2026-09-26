@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>SampleBusinessAgent</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="HbaPlatformRoot\src\HomeBusinessAssistant.AgentSdk\HomeBusinessAssistant.AgentSdk.csproj" />
+    <ProjectReference Include="..\SampleBusinessAgent.Application\SampleBusinessAgent.Application.csproj" />
+    <ProjectReference Include="..\SampleBusinessAgent.Infrastructure\SampleBusinessAgent.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

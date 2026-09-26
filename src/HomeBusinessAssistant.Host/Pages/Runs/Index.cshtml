@@ -1,0 +1,26 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.Runs.IndexModel
+@using HomeBusinessAssistant.Domain.Agents
+@{
+    ViewData["Title"] = "Runs";
+}
+
+<header class="page-header"><div><p class="eyebrow">Runner history</p><h1>Runs</h1><p>Filter durable executions, then inspect protocol events, metrics, diagnostics, artifacts, and audit.</p></div></header>
+
+<form method="get" class="toolbar" aria-label="Run filters">
+    <div class="inline-actions">
+        <label>Agent <select name="agentId"><option value="">All agents</option>@foreach (var agent in Model.Agents) { <option value="@agent.Definition.Id.Value" selected="@(Model.AgentId == agent.Definition.Id.Value)">@agent.Definition.DisplayName</option> }</select></label>
+        <label>Status <select name="status"><option value="">All statuses</option>@foreach (AgentRunStatus value in Enum.GetValues<AgentRunStatus>()) { <option value="@value" selected="@(Model.Status == value)">@value</option> }</select></label>
+        <label>Trigger <select name="trigger"><option value="">All triggers</option>@foreach (TriggerType value in Enum.GetValues<TriggerType>()) { <option value="@value" selected="@(Model.Trigger == value)">@value</option> }</select></label>
+        <label class="check"><input type="checkbox" name="attentionOnly" value="true" checked="@Model.AttentionOnly" /> Failure / attention</label>
+        <label class="check"><input type="checkbox" name="activeOnly" value="true" checked="@Model.ActiveOnly" /> Active only</label>
+    </div>
+    <button type="submit" class="secondary">Apply filters</button>
+</form>
+
+<section class="table-shell" aria-labelledby="run-list-title">
+    <h2 id="run-list-title" class="sr-only">Run history</h2>
+    @if (Model.Runs.Items.Count == 0) { <p class="empty-state">No runs match these filters.</p> }
+    else { <div class="table-scroll"><table><thead><tr><th>Run</th><th>Agent / command</th><th>Trigger</th><th>Started</th><th>Duration</th><th>Status</th><th>Summary</th></tr></thead><tbody>@foreach (var item in Model.Runs.Items) { <tr><td><a asp-page="/Runs/Details" asp-route-id="@item.Run.Id.Value" class="code">@item.Run.Id</a><span class="supporting">attempt @item.AttemptNumber</span></td><td><strong>@item.AgentDisplayName</strong><span class="supporting code">@item.CommandName</span></td><td>@item.Run.TriggerType</td><td>@item.Run.StartedAtUtc.ToLocalTime().ToString("g")<span class="supporting">Due @item.DueAtUtc.ToLocalTime().ToString("g")</span></td><td>@(item.Run.DurationMilliseconds.HasValue ? TimeSpan.FromMilliseconds(item.Run.DurationMilliseconds.Value).ToString("g") : "In progress")</td><td><span class="pill @(item.Run.Status == AgentRunStatus.Completed ? "positive" : item.Run.Status is AgentRunStatus.Failed or AgentRunStatus.TimedOut or AgentRunStatus.Abandoned ? "attention" : "warning")">@item.Run.Status</span></td><td>@(item.Run.SummaryText ?? item.Run.ErrorMessage ?? "—")</td></tr> }</tbody></table></div> }
+    <div class="pagination"><span>Page @Model.Runs.PageNumber of @Model.Runs.TotalPages · @Model.Runs.TotalCount run(s)</span><div class="inline-actions">@if (Model.Runs.PageNumber > 1) { <a class="button-link ghost" asp-route-pageNumber="@(Model.Runs.PageNumber - 1)" asp-route-agentId="@Model.AgentId" asp-route-status="@Model.Status" asp-route-trigger="@Model.Trigger" asp-route-attentionOnly="@Model.AttentionOnly" asp-route-activeOnly="@Model.ActiveOnly">Previous</a> }@if (Model.Runs.PageNumber < Model.Runs.TotalPages) { <a class="button-link ghost" asp-route-pageNumber="@(Model.Runs.PageNumber + 1)" asp-route-agentId="@Model.AgentId" asp-route-status="@Model.Status" asp-route-trigger="@Model.Trigger" asp-route-attentionOnly="@Model.AttentionOnly" asp-route-activeOnly="@Model.ActiveOnly">Next</a> }</div></div>
+</section>

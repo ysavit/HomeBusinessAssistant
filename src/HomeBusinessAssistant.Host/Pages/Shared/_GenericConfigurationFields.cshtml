@@ -1,0 +1,41 @@
+@model HomeBusinessAssistant.Host.Pages.Components.GenericConfigurationFieldsView
+@using HomeBusinessAssistant.Application.Configuration
+<div class="form-grid">
+@foreach (GenericConfigurationField field in Model.Schema.Fields.Where(field => field.Kind != GenericConfigurationValueKind.Constant))
+{
+    string inputId = $"generic-{field.Name}";
+    string fieldName = $"{Model.FieldPrefix}[{field.Name}]";
+    Model.Values.TryGetValue(field.Name, out string? currentValue);
+    <div class="@(field.Kind == GenericConfigurationValueKind.Array ? "wide" : string.Empty)">
+        <label for="@inputId">@field.Title@if (field.Required) { <span aria-hidden="true"> *</span> }</label>
+        @if (field.AllowedValues.Count > 0)
+        {
+            <select id="@inputId" name="@fieldName" required="@field.Required">
+                @foreach (string option in field.AllowedValues) { <option value="@option" selected="@(option == currentValue)">@option</option> }
+            </select>
+        }
+        else if (field.Kind == GenericConfigurationValueKind.Boolean)
+        {
+            <select id="@inputId" name="@fieldName" required><option value="true" selected="@(currentValue == "true")">Enabled</option><option value="false" selected="@(currentValue != "true")">Disabled</option></select>
+        }
+        else if (field.Kind == GenericConfigurationValueKind.Array)
+        {
+            <textarea id="@inputId" name="@fieldName" rows="5" required="@field.Required">@currentValue</textarea><p class="field-help">Enter one @field.ItemKind value per line.</p>
+        }
+        else if (field.IsSecretReference)
+        {
+            <input id="@inputId" name="@fieldName" value="@currentValue" readonly required="@field.Required" /><p class="field-help">This is an opaque reference only. Set or remove its protected value in the separate Secret status panel.</p>
+        }
+        else if (field.Kind is GenericConfigurationValueKind.WholeNumber or GenericConfigurationValueKind.Number)
+        {
+            <input id="@inputId" name="@fieldName" value="@currentValue" type="number" step="@(field.Kind == GenericConfigurationValueKind.WholeNumber ? "1" : "any")" min="@field.Minimum" max="@field.Maximum" required="@field.Required" />
+        }
+        else
+        {
+            <input id="@inputId" name="@fieldName" value="@currentValue" minlength="@field.MinimumLength" maxlength="@field.MaximumLength" required="@field.Required" />
+        }
+        @if (!string.IsNullOrWhiteSpace(field.Description)) { <p class="field-help">@field.Description</p> }
+        <span class="field-validation-valid" data-valmsg-for="@fieldName" data-valmsg-replace="true"></span>
+    </div>
+}
+</div>

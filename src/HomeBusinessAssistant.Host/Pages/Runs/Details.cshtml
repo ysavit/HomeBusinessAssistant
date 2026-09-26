@@ -1,0 +1,43 @@
+@page "/Runs/{id:guid}"
+@model HomeBusinessAssistant.Host.Pages.Runs.DetailsModel
+@using HomeBusinessAssistant.Domain.Agents
+@{
+    ViewData["Title"] = "Run detail";
+    var detail = Model.Detail!;
+    var run = detail.Run.Run;
+    bool active = run.Status is AgentRunStatus.Starting or AgentRunStatus.Running;
+    bool terminal = run.Status is AgentRunStatus.Completed or AgentRunStatus.Failed or AgentRunStatus.TimedOut or AgentRunStatus.Cancelled or AgentRunStatus.Abandoned;
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Run · @run.Id</p><h1>@detail.Run.AgentDisplayName</h1><p>@detail.Run.CommandName · occurrence @run.OccurrenceId</p></div>
+    <div class="page-actions">@if (active) { <form method="post" asp-page-handler="Cancel" data-confirm="Request cancellation? Runner may terminate the entire child process tree after the grace period."><button class="danger">Cancel run</button></form> }@if (terminal) { <form method="post" asp-page-handler="Retry" data-confirm="Create a new explicit retry occurrence using the original configuration revision and arguments?"><button class="secondary">Retry run</button></form> }<a class="button-link ghost" asp-page="/Runs/Index">All runs</a></div>
+</header>
+
+<section class="facts-strip" aria-label="Run facts">
+    <div class="fact"><span>Status</span><strong data-run-status-url="@Url.Page("/Runs/Details", "Status", new { id = run.Id.Value })">@run.Status</strong></div>
+    <div class="fact"><span>Trigger</span><strong>@run.TriggerType</strong></div>
+    <div class="fact"><span>Started</span><strong>@run.StartedAtUtc.ToLocalTime().ToString("g")</strong></div>
+    <div class="fact"><span>Duration</span><strong>@(run.DurationMilliseconds.HasValue ? TimeSpan.FromMilliseconds(run.DurationMilliseconds.Value).ToString("g") : "In progress")</strong></div>
+    <div class="fact"><span>Exit code</span><strong>@(run.ExitCode?.ToString() ?? "—")</strong></div>
+</section>
+
+<nav class="tabs" aria-label="Run detail sections"><a href="#overview" aria-current="page">Overview</a><a href="#timeline">Timeline</a><a href="#metrics">Metrics</a><a href="#artifacts">Artifacts</a><a href="#audit">Audit</a></nav>
+
+<div class="content-grid">
+    <div class="stack">
+        <section id="overview" class="panel">
+            <div class="panel-heading"><h2>Execution identity</h2></div>
+            <div class="form-grid"><div><strong>Run / occurrence</strong><p class="supporting code">@run.Id<br />@run.OccurrenceId</p></div><div><strong>Configuration</strong><p class="supporting">Revision @detail.ConfigurationRevision?.RevisionNumber</p><p class="supporting code">@run.ConfigurationHash</p></div><div><strong>Versions</strong><p class="supporting">Runner @run.RunnerVersion · agent @run.AgentVersion · manifest @run.ManifestVersion</p></div><div><strong>Executable hash</strong><p class="supporting code">@run.ExecutableHash</p></div><div><strong>Machine / process</strong><p class="supporting">@run.MachineName · PID @(run.ProcessId?.ToString() ?? "—")</p></div><div><strong>Heartbeat</strong><p class="supporting">@(run.LastHeartbeatAtUtc?.ToLocalTime().ToString("g") ?? "—")</p></div></div>
+        </section>
+        <section class="panel"><div class="panel-heading"><h2>Summary</h2></div><p>@(run.SummaryText ?? "No summary text was published.")</p>@if (run.ErrorType is not null || run.ErrorMessage is not null) { <p class="empty-state attention-text"><strong>@run.ErrorType</strong><br />@run.ErrorMessage</p> }@if (run.SummaryJson is not null) { <pre>@run.SummaryJson</pre> }</section>
+        <section id="timeline" class="panel"><div class="panel-heading"><h2>Progress timeline</h2><span class="pill muted">@detail.Events.Count event(s)</span></div>@if (detail.Events.Count == 0) { <p class="empty-state">No run events were persisted.</p> } else { <ol class="timeline">@foreach (var item in detail.Events) { <li><time datetime="@item.TimestampUtc.ToString("O")">@item.TimestampUtc.ToLocalTime().ToString("T")</time><div><strong>@item.EventType · @item.Level</strong><span>@item.Message</span>@if (item.DataJson != "{}") { <details><summary>Structured data</summary><pre>@item.DataJson</pre></details> }</div></li> }</ol> }</section>
+        <section id="metrics" class="panel"><div class="panel-heading"><h2>Metrics</h2></div>@if (detail.Metrics.Count == 0) { <p class="empty-state">No metrics were persisted.</p> } else { <div class="metric-grid">@foreach (var metric in detail.Metrics) { <div class="metric-card"><span>@metric.Name</span><strong>@(metric.NumericValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? metric.TextValue) @metric.Unit</strong><span>@metric.TimestampUtc.ToLocalTime().ToString("T")</span></div> }</div> }</section>
+        <section id="artifacts" class="table-shell"><div class="panel panel-heading"><h2>Artifacts</h2></div>@if (detail.Artifacts.Count == 0) { <p class="empty-state">No artifacts were registered.</p> } else { <div class="table-scroll"><table><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Hash</th><th>Retention</th><th>Action</th></tr></thead><tbody>@foreach (var artifact in detail.Artifacts) { <tr><td>@artifact.FileName</td><td>@artifact.ArtifactType<span class="supporting">@artifact.ContentType</span></td><td>@artifact.SizeBytes.ToString("N0") B</td><td class="code">@artifact.Sha256[..12]…</td><td>@(artifact.DeleteAfterUtc?.ToLocalTime().ToString("g") ?? "Default")</td><td><a class="button-link ghost" asp-page-handler="Artifact" asp-route-id="@run.Id.Value" asp-route-artifactId="@artifact.Id">Download</a></td></tr> }</tbody></table></div> }</section>
+        <section id="audit" class="table-shell"><div class="panel panel-heading"><h2>Related audit</h2></div>@if (detail.AuditEvents.Count == 0) { <p class="empty-state">No related audit rows.</p> } else { <div class="table-scroll"><table><thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Outcome</th></tr></thead><tbody>@foreach (var audit in detail.AuditEvents) { <tr><td><a asp-page="/Audit/Details" asp-route-id="@audit.Id">@audit.TimestampUtc.ToLocalTime().ToString("g")</a></td><td>@audit.Action</td><td>@audit.ActorId</td><td>@audit.Outcome</td></tr> }</tbody></table></div> }</section>
+    </div>
+    <aside class="stack">
+        <section class="panel"><div class="panel-heading"><h2>Occurrence</h2></div><ul class="detail-list"><li><strong>Due</strong><span class="supporting">@detail.Occurrence.DueAtUtc.ToLocalTime().ToString("g")</span></li><li><strong>Status</strong><span class="supporting">@detail.Occurrence.Status</span></li><li><strong>Attempt</strong><span class="supporting">@detail.Occurrence.AttemptNumber</span></li><li><strong>Power</strong><span class="supporting">Wake @detail.Occurrence.RequiresWake · system @detail.Occurrence.KeepSystemAwake · display @detail.Occurrence.KeepDisplayOn</span></li></ul></section>
+        <section class="panel"><p class="supporting">Agent output is rendered as encoded text. Structured JSON is never treated as HTML. Malformed protocol lines remain diagnostics and cannot execute script.</p></section>
+    </aside>
+</div>

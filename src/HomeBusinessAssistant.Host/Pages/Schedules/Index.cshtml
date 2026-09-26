@@ -1,0 +1,40 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.Schedules.IndexModel
+@{
+    ViewData["Title"] = "Schedules";
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Durable scheduling engine</p><h1>Schedules</h1><p>Every due slot is persisted and claimed atomically. Windows Task Scheduler is only the wake bridge.</p></div>
+    <div class="page-actions"><form method="post" asp-page-handler="Reconcile"><button class="secondary">Reconcile schedules &amp; wake</button></form><a class="button-link primary" asp-page="/Schedules/Edit">Create schedule</a></div>
+</header>
+
+<section class="table-shell" aria-labelledby="schedule-list-title">
+    <h2 id="schedule-list-title" class="sr-only">Schedules</h2>
+    @if (Model.Schedules.Count == 0)
+    {
+        <p class="empty-state">No schedules exist. Create one to preview and persist future occurrences.</p>
+    }
+    else
+    {
+        <div class="table-scroll"><table>
+            <thead><tr><th>Schedule</th><th>Agent</th><th>Expression</th><th>Time zone</th><th>Next due</th><th>Wake</th><th>State</th><th>Last result</th><th>Actions</th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.Schedules)
+            {
+                <tr>
+                    <td><strong><a asp-page="/Schedules/Details" asp-route-id="@item.Schedule.Id">@item.Schedule.Name</a></strong><span class="supporting">@item.Schedule.CommandName</span></td>
+                    <td>@item.AgentDisplayName</td>
+                    <td>@item.Schedule.Kind<span class="supporting code">@item.Schedule.DefinitionJson</span></td>
+                    <td>@item.Schedule.TimeZoneId</td>
+                    <td>@(item.NextDueAtUtc?.ToLocalTime().ToString("g") ?? "—")<span class="supporting">@item.NextStatus</span></td>
+                    <td>@item.Schedule.WakePolicy</td>
+                    <td><span class="pill @(!item.Schedule.IsEnabled ? "muted" : item.Schedule.IsPaused ? "warning" : "positive")">@(!item.Schedule.IsEnabled ? "Disabled" : item.Schedule.IsPaused ? "Paused" : "Enabled")</span></td>
+                    <td>@(item.LastRunStatus?.ToString() ?? "No runs")<span class="supporting">@item.LastRunAtUtc?.ToLocalTime().ToString("g")</span></td>
+                    <td><div class="inline-actions"><a class="button-link ghost" asp-page="/Schedules/Edit" asp-route-id="@item.Schedule.Id">Edit</a>@if (item.Schedule.IsPaused) { <form method="post" asp-page-handler="Resume"><input type="hidden" name="id" value="@item.Schedule.Id" /><button class="secondary">Resume</button></form> } else { <form method="post" asp-page-handler="Pause" data-confirm="Pause this schedule indefinitely?"><input type="hidden" name="id" value="@item.Schedule.Id" /><button class="ghost">Pause</button></form> }<form method="post" asp-page-handler="SetEnabled" data-confirm="@(item.Schedule.IsEnabled ? "Disable this schedule? Existing run history remains available." : "Enable this schedule?")"><input type="hidden" name="id" value="@item.Schedule.Id" /><input type="hidden" name="enabled" value="@(!item.Schedule.IsEnabled)" /><button class="@(item.Schedule.IsEnabled ? "danger" : "secondary")">@(item.Schedule.IsEnabled ? "Disable" : "Enable")</button></form></div></td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</section>

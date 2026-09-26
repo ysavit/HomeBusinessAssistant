@@ -1,0 +1,10 @@
+@page "/Audit/{id:guid}"
+@model HomeBusinessAssistant.Host.Pages.Audit.DetailsModel
+@{
+    ViewData["Title"] = "Audit event";
+    var item = Model.Event!;
+}
+
+<header class="page-header"><div><p class="eyebrow">Immutable audit event</p><h1>@item.Action</h1><p>@item.TargetType · @item.TargetId</p></div><a class="button-link ghost" asp-page="/Audit/Index">Back to audit</a></header>
+<section class="facts-strip" aria-label="Audit facts"><div class="fact"><span>Time</span><strong>@item.TimestampUtc.ToLocalTime().ToString("g")</strong></div><div class="fact"><span>Actor</span><strong>@item.ActorId</strong></div><div class="fact"><span>Outcome</span><strong>@item.Outcome</strong></div><div class="fact"><span>Correlation</span><strong class="code">@item.CorrelationId</strong></div></section>
+<div class="content-grid"><section class="panel"><div class="panel-heading"><h2>Redacted structured data</h2></div><pre>@Model.RedactedData</pre></section><aside class="stack"><section class="panel"><ul class="detail-list"><li><strong>Actor type</strong><span class="supporting">@item.ActorType</span></li><li><strong>Target</strong><span class="supporting">@item.TargetType / @item.TargetId</span></li><li><strong>Run</strong><span class="supporting">@(item.RunId?.ToString() ?? "Not linked")</span></li></ul>@if (item.RunId is not null) { <a class="button-link ghost" asp-page="/Runs/Details" asp-route-id="@item.RunId.Value.Value">Open run</a> }</section><section class="panel"><p class="supporting">This row is append-only. Known sensitive property names and credential-shaped text are redacted again before display.</p></section></aside></div>

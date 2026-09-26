@@ -1,0 +1,74 @@
+@page "/Onboarding/Agent"
+@model HomeBusinessAssistant.Host.Pages.Onboarding.AgentModel
+@using HomeBusinessAssistant.Application.Onboarding
+@{
+    GenericAgentOnboardingEditor? editor = Model.Editor;
+    ViewData["Title"] = editor is null ? "Configure agent" : $"Configure {editor.Agent.Definition.DisplayName}";
+}
+
+@if (editor is null)
+{
+    <section class="panel"><p class="empty-state">This generic onboarding step is unavailable.</p></section>
+}
+else
+{
+    <header class="page-header onboarding-header">
+        <div><p class="eyebrow">Selected agent · @editor.Agent.Definition.Id.Value</p><h1>Review @editor.Agent.Definition.DisplayName.</h1><p>@editor.Schema.Description</p></div>
+        <a class="button-link ghost" asp-page="/Onboarding/Agents" asp-route-sessionId="@Model.SessionId">Back to agent selection</a>
+    </header>
+
+    <ol class="onboarding-steps" aria-label="Onboarding progress">
+        <li class="complete"><span>1</span><strong>Welcome</strong></li><li class="complete"><span>2</span><strong>Readiness</strong></li><li class="complete"><span>3</span><strong>Choose agents</strong></li><li class="current" aria-current="step"><span>4</span><strong>Agent setup</strong></li><li><span>5</span><strong>Diagnostic &amp; schedule</strong></li>
+    </ol>
+
+    <section class="facts-strip" aria-label="Configuration identity">
+        <div class="fact"><span>Installed</span><strong>@editor.Agent.Package.InstalledVersion</strong></div>
+        <div class="fact"><span>Schema</span><strong>@editor.Schema.SchemaVersion</strong></div>
+        <div class="fact"><span>Current revision</span><strong>@(editor.Configuration is null ? "None" : editor.Configuration.CurrentRevision.RevisionNumber)</strong></div>
+        <div class="fact"><span>Hash</span><strong class="code">@(editor.Configuration?.CurrentRevision.ConfigurationHash[..12] ?? "Not saved")</strong></div>
+        <div class="fact"><span>Enabled</span><strong>@(editor.Agent.Definition.Enabled ? "Already enabled (unchanged)" : "Disabled")</strong></div>
+        <div class="fact"><span>Progress</span><strong>@editor.Selection.ProgressStatus</strong></div>
+    </section>
+
+    <div class="content-grid">
+        <div class="stack">
+            <form method="post" asp-page-handler="Save" class="panel">
+                <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="AgentId" />
+                <input type="hidden" asp-for="ExpectedSelectionRevision" />
+                <input type="hidden" asp-for="ExpectedConfigurationRevision" />
+                <input type="hidden" asp-for="ExpectedConfigurationHash" />
+                <div asp-validation-summary="ModelOnly"></div>
+                <div class="panel-heading"><div><p class="eyebrow">Safe generic schema</p><h2>@editor.Schema.Title</h2></div><span class="pill muted">Server validated</span></div>
+                <partial name="_GenericConfigurationFields" model="@(new HomeBusinessAssistant.Host.Pages.Components.GenericConfigurationFieldsView(editor.Schema, Model.GenericValues, "GenericValues"))" />
+                <div class="onboarding-form-tail"><label asp-for="ChangeSummary">Revision note</label><input asp-for="ChangeSummary" /><span asp-validation-for="ChangeSummary"></span></div>
+                <div class="page-actions onboarding-form-tail"><button class="primary" type="submit" name="destination" value="continue">Save and continue</button><button class="secondary" type="submit" name="destination" value="exit">Save and exit</button><a class="button-link ghost" asp-page="/Onboarding/Agents" asp-route-sessionId="@Model.SessionId">Back</a></div>
+            </form>
+
+            <section class="panel">
+                <div class="panel-heading"><h2>What saving does</h2></div>
+                <p class="supporting">The normal immutable configuration service validates and promotes the revision. A no-op review reuses the current hash. Selection alone never enables or runs this agent, and existing schedules are not changed.</p>
+                <form method="post" asp-page-handler="ConfigureLater"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="AgentId" /><input type="hidden" asp-for="ExpectedSelectionRevision" /><button class="ghost">Configure later</button></form>
+            </section>
+        </div>
+
+        <aside class="stack" aria-label="Protected secret status">
+            <section class="panel"><div class="panel-heading"><h2>Prerequisites</h2><span class="pill @(editor.Agent.ReadyForValidation ? "positive" : "attention")">@(editor.Agent.ReadyForValidation ? "Ready" : "Needs attention")</span></div><p>@editor.Agent.PendingMessage</p><code>@editor.Agent.PendingReasonCode</code></section>
+            @foreach (AgentOnboardingSecretStatus secret in editor.Secrets)
+            {
+                <section class="panel">
+                    <div class="panel-heading"><h2>@secret.Title</h2><span class="pill @(secret.IsConfigured == true ? "positive" : "attention")">@(secret.IsConfigured == true ? "Configured" : secret.IsConfigured == false ? "Not configured" : "Unavailable")</span></div>
+                    <p class="supporting">The input below is always empty. Its value is protected separately for the current Windows user and never enters configuration JSON, onboarding state, TempData, or the page response.</p>
+                    <form method="post" asp-page-handler="SetSecret">
+                        <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="AgentId" /><input type="hidden" asp-for="ExpectedSelectionRevision" /><input type="hidden" name="fieldKey" value="@secret.FieldKey" />
+                        <label for="secret-@secret.FieldKey">New protected value</label><input id="secret-@secret.FieldKey" name="secretValue" type="password" autocomplete="new-password" required />
+                        <button class="secondary onboarding-secret-action">Set protected value</button>
+                    </form>
+                    @if (secret.IsConfigured == true)
+                    {
+                        <form class="onboarding-secret-action" method="post" asp-page-handler="DeleteSecret" data-confirm="Remove this protected value? A required secret will return setup to Needs attention."><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="AgentId" /><input type="hidden" asp-for="ExpectedSelectionRevision" /><input type="hidden" name="fieldKey" value="@secret.FieldKey" /><button class="danger">Delete protected value</button></form>
+                    }
+                </section>
+            }
+        </aside>
+    </div>
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homebusinessassistant.local/schemas/wake-remote-configuration-1.0.json",
+  "title": "Wake and Remote configuration 1.0",
+  "type": "object",
+  "required": ["schemaVersion", "timeZoneId", "network", "remoteProvider", "power", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "timeZoneId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "network": { "type": "object" },
+    "remoteProvider": { "type": "object", "description": "Readiness settings only; credentials and PINs are forbidden." },
+    "power": { "type": "object" },
+    "diagnostics": { "type": "object" }
+  },
+  "additionalProperties": false
+}

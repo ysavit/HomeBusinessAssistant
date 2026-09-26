@@ -1,0 +1,27 @@
+{
+  "manifestVersion": "1.0",
+  "id": "wake-remote",
+  "displayName": "Wake & Remote",
+  "description": "Maintains a bounded local wake and remote-availability window without changing permanent power policy.",
+  "version": "1.1.0",
+  "executable": "WakeRemote.exe",
+  "supportedCommands": [
+    "run",
+    "diagnose",
+    "check-remote",
+    "wake-test"
+  ],
+  "capabilities": [
+    "keep-awake",
+    "availability-window",
+    "network-readiness",
+    "remote-provider-readiness",
+    "read-only-diagnostics"
+  ],
+  "defaultTimeoutSeconds": 14400,
+  "defaultConcurrencyPolicy": "Forbid",
+  "supportsScheduling": true,
+  "supportsManualRun": true,
+  "requiresInteractiveUserSession": true,
+  "configurationSchemaVersion": "1.0"
+}

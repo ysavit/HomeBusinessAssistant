@@ -1,0 +1,29 @@
+@page "/Schedules/{id:guid}"
+@model HomeBusinessAssistant.Host.Pages.Schedules.DetailsModel
+@{
+    ViewData["Title"] = Model.Detail?.Schedule.Schedule.Name ?? "Schedule";
+    var detail = Model.Detail!;
+    var schedule = detail.Schedule.Schedule;
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Durable schedule · @schedule.Id</p><h1>@schedule.Name</h1><p>@detail.Schedule.AgentDisplayName · @schedule.CommandName</p></div>
+    <div class="page-actions"><a class="button-link ghost" asp-page="/Schedules/Edit" asp-route-id="@schedule.Id">Edit schedule</a><form method="post" asp-page-handler="Run" data-confirm="Create a manual occurrence for this schedule? A paused schedule requires the explicit bypass checkbox below."><input type="hidden" name="id" value="@schedule.Id" /><label class="check"><input type="checkbox" name="bypassPause" value="true" /> Run despite schedule pause</label><button class="primary">Run now</button></form></div>
+</header>
+
+<section class="facts-strip" aria-label="Schedule facts">
+    <div class="fact"><span>State</span><strong>@(!schedule.IsEnabled ? "Disabled" : schedule.IsPaused ? "Paused" : "Enabled")</strong></div>
+    <div class="fact"><span>Type</span><strong>@schedule.Kind</strong></div>
+    <div class="fact"><span>Time zone</span><strong>@schedule.TimeZoneId</strong></div>
+    <div class="fact"><span>Next due</span><strong>@(detail.Schedule.NextDueAtUtc?.ToLocalTime().ToString("g") ?? "None")</strong></div>
+    <div class="fact"><span>Wake policy</span><strong>@schedule.WakePolicy</strong></div>
+</section>
+
+<div class="content-grid">
+    <div class="stack">
+        <section class="panel"><div class="panel-heading"><h2>Policy</h2></div><div class="form-grid"><div><strong>Misfire</strong><p class="supporting">@schedule.MisfirePolicy · grace @schedule.MisfireGracePeriod</p></div><div><strong>Concurrency</strong><p class="supporting">@schedule.ConcurrencyPolicy</p></div><div><strong>Timeout</strong><p class="supporting">@schedule.Timeout</p></div><div><strong>Retry</strong><p class="supporting code">@schedule.RetryPolicyJson</p></div></div></section>
+        <section class="table-shell"><div class="panel panel-heading"><h2>Future occurrences</h2></div>@if (detail.FutureOccurrences.Count == 0) { <p class="empty-state">No future occurrences are currently persisted.</p> } else { <div class="table-scroll"><table><thead><tr><th>Due</th><th>Status</th><th>Attempt</th><th>Wake</th><th>Occurrence</th></tr></thead><tbody>@foreach (var occurrence in detail.FutureOccurrences) { <tr><td>@occurrence.DueAtUtc.ToLocalTime().ToString("g")<span class="supporting">@occurrence.DueAtUtc.ToString("u")</span></td><td>@occurrence.Status</td><td>@occurrence.AttemptNumber</td><td>@(occurrence.RequiresWake ? "Required" : "No")</td><td class="code">@occurrence.Id</td></tr> }</tbody></table></div> }</section>
+        <section class="table-shell"><div class="panel panel-heading"><h2>Run history</h2></div>@if (detail.RecentRuns.Count == 0) { <p class="empty-state">No runs are linked to this schedule.</p> } else { <div class="table-scroll"><table><thead><tr><th>Run</th><th>Started</th><th>Status</th><th>Duration</th></tr></thead><tbody>@foreach (var run in detail.RecentRuns) { <tr><td><a asp-page="/Runs/Details" asp-route-id="@run.Id.Value" class="code">@run.Id</a></td><td>@run.StartedAtUtc.ToLocalTime().ToString("g")</td><td>@run.Status</td><td>@(run.DurationMilliseconds.HasValue ? TimeSpan.FromMilliseconds(run.DurationMilliseconds.Value).ToString("g") : "—")</td></tr> }</tbody></table></div> }</section>
+    </div>
+    <aside class="stack"><section class="panel"><div class="panel-heading"><h2>Definition</h2></div><pre>@schedule.DefinitionJson</pre></section><section class="panel"><div class="panel-heading"><h2>DST and misfires</h2></div><p class="supporting">Invalid spring-forward wall times advance to the first valid second. Ambiguous fall-back times select the earlier UTC instant. The persisted misfire policy decides how missed work is handled.</p></section></aside>
+</div>

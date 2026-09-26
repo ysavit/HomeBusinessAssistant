@@ -1,0 +1,23 @@
+@model global::FounderScout.Application.FounderScoutInvitationQueueItem
+@{
+    string? draftText = Model.ActiveRevision?.ShortDraft ?? Model.GeneratedDraft?.ShortDraft;
+    string draftId = $"queue-draft-{Model.Entry.Id:N}";
+    bool safeSource = Uri.TryCreate(Model.SourceUrl, UriKind.Absolute, out var source) && source.Scheme is "https" or "http";
+}
+<li class="queue-card">
+    <span class="queue-position">@Model.Entry.Position</span>
+    <div>
+        <a asp-page="/FounderScout/Candidates/Details" asp-route-id="@Model.Candidate.CandidateId"><strong>@Model.Candidate.DisplayName</strong></a>
+        <span class="supporting">Priority @Model.Candidate.InvitationPriority?.ToString("0.0") · confidence @Model.Candidate.Confidence?.ToString("0.00") · draft @(Model.GeneratedDraft?.Status.ToString() ?? "missing")</span>
+        <span class="pill @(Model.Eligible ? "positive" : "attention")">@(Model.Eligible ? "Eligible" : "Review rules")</span>
+        @if (Model.EligibilityReasons.Count > 0) { <span class="supporting">@string.Join(" · ", Model.EligibilityReasons)</span> }
+        @if (!string.IsNullOrWhiteSpace(draftText)) { <details><summary>Manual checklist and draft</summary><ul><li>Review evidence and source profile.</li><li>Review this draft and copy it.</li><li>Send manually outside Founder Scout.</li><li>Record the outcome here.</li></ul><pre id="@draftId">@draftText</pre><button type="button" class="ghost" data-copy-source="@draftId">Copy draft</button></details> }
+        @if (safeSource) { <a class="supporting" href="@source!.AbsoluteUri" target="_blank" rel="noopener noreferrer">Open source profile</a> }
+    </div>
+    <div class="queue-actions">
+        <form method="post" asp-page-handler="Move"><input type="hidden" name="entryId" value="@Model.Entry.Id" /><input type="hidden" name="queueKind" value="@Model.Entry.QueueKind" /><button class="ghost" name="direction" value="-1" aria-label="Move @Model.Candidate.DisplayName up">↑</button><button class="ghost" name="direction" value="1" aria-label="Move @Model.Candidate.DisplayName down">↓</button></form>
+        @if (Model.GeneratedDraft is not null && Model.GeneratedDraft.Status.ToString() != "Reviewed") { <form method="post" asp-page-handler="ReviewDraft"><input type="hidden" name="draftId" value="@Model.GeneratedDraft.Id" /><button class="ghost">Review</button></form> }
+        <form method="post" asp-page-handler="ManuallySent" data-confirm="Record that you manually sent this invitation outside Founder Scout?"><input type="hidden" name="candidateId" value="@Model.Candidate.CandidateId" /><button class="secondary">Record sent</button></form>
+        <form method="post" asp-page-handler="Remove"><input type="hidden" name="entryId" value="@Model.Entry.Id" /><button class="danger">Remove</button></form>
+    </div>
+</li>

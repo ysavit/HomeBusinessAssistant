@@ -1,0 +1,25 @@
+@page "/Agents/{id}/configuration/history/{revisionId:guid}"
+@model HomeBusinessAssistant.Host.Pages.Agents.ConfigurationHistoryModel
+@{
+    ViewData["Title"] = $"Configuration revision {Model.Revision?.RevisionNumber}";
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Immutable configuration</p><h1>Revision @Model.Revision!.RevisionNumber</h1><p>@Model.Revision.ChangeSummary</p></div>
+    <a class="button-link ghost" asp-page="/Agents/Configuration" asp-route-id="@Model.Revision.AgentId.Value">Back to editor</a>
+</header>
+
+<section class="facts-strip" aria-label="Revision facts">
+    <div class="fact"><span>Created</span><strong>@Model.Revision.CreatedAtUtc.ToLocalTime().ToString("g")</strong></div>
+    <div class="fact"><span>Changed by</span><strong>@Model.Revision.ChangedBy</strong></div>
+    <div class="fact"><span>Schema</span><strong>@Model.Revision.SchemaVersion</strong></div>
+    <div class="fact"><span>Hash</span><strong class="code">@Model.Revision.ConfigurationHash[..12]…</strong></div>
+</section>
+
+<div class="content-grid">
+    <section class="panel"><div class="panel-heading"><h2>Redacted revision document</h2></div><pre>@Model.RedactedJson</pre></section>
+    <aside class="stack">
+        <section class="panel"><div class="panel-heading"><h2>Changes from previous</h2></div>@if (Model.Previous is null) { <p class="empty-state">Initial configuration revision.</p> } else if (Model.ChangedFields.Count == 0) { <p class="empty-state">No top-level fields changed.</p> } else { <ul class="detail-list">@foreach (var field in Model.ChangedFields) { <li class="code">$.@field</li> }</ul> }</section>
+        <section class="panel"><p class="supporting">Secret-bearing names and values are redacted. The page never retrieves DPAPI secret material.</p></section>
+    </aside>
+</div>

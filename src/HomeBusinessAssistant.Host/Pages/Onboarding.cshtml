@@ -1,0 +1,123 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.OnboardingModel
+@using HomeBusinessAssistant.Application.Onboarding
+@{
+    ViewData["Title"] = "Onboarding readiness";
+    OnboardingOverview? overview = Model.Overview;
+    OnboardingSession? session = overview?.Session;
+    IReadOnlyList<OnboardingCheckView> required = overview?.Checks.Where(item => item.Definition.Required && item.Definition.Scope != OnboardingCheckScope.Agent).ToArray() ?? [];
+    IReadOnlyList<OnboardingCheckView> optional = overview?.Checks.Where(item => !item.Definition.Required && item.Definition.Scope != OnboardingCheckScope.Agent).ToArray() ?? [];
+    IReadOnlyList<OnboardingCheckView> agentChecks = overview?.Checks.Where(item => item.Definition.Scope == OnboardingCheckScope.Agent).ToArray() ?? [];
+}
+
+<header class="page-header onboarding-header">
+    <div><p class="eyebrow">First-run foundation</p><h1>Make sure this workstation is ready.</h1><p>These checks validate only the local platform. Nothing here enables an agent, creates a schedule, starts Runner, changes a Windows task, or changes power policy.</p></div>
+    <a class="button-link ghost" asp-page="/About">How this works</a>
+</header>
+
+@if (session is null || overview is null)
+{
+    <section class="panel"><p class="empty-state">Onboarding state is unavailable.</p></section>
+}
+else
+{
+    <ol class="onboarding-steps" aria-label="Onboarding progress">
+        <li class="complete"><span>1</span><strong>Welcome</strong></li>
+        <li class="@(session.CurrentStep == OnboardingSteps.Readiness ? "current" : "complete")" aria-current="@(session.CurrentStep == OnboardingSteps.Readiness ? "step" : null)"><span>2</span><strong>Readiness</strong></li>
+        <li class="@(session.CurrentStep == OnboardingSteps.AgentSelectionPending ? "current" : session.CurrentStep == OnboardingSteps.AgentConfiguration ? "complete" : null)" aria-current="@(session.CurrentStep == OnboardingSteps.AgentSelectionPending ? "step" : null)"><span>3</span><strong>Choose agents</strong></li>
+        <li class="@(session.CurrentStep == OnboardingSteps.AgentConfiguration ? "current" : null)" aria-current="@(session.CurrentStep == OnboardingSteps.AgentConfiguration ? "step" : null)"><span>4</span><strong>Agent setup</strong></li>
+        <li><span>5</span><strong>Diagnostic &amp; schedule</strong></li>
+    </ol>
+
+    @if (session.Status == OnboardingSessionStatus.Completed && session.CurrentStep == OnboardingSteps.LegacyInstallation)
+    {
+        <section class="panel onboarding-callout">
+            <p class="eyebrow">Established installation</p>
+            <h2>Your existing setup was preserved.</h2>
+            <p>This database already contains owner-authored configuration, schedules, or run history, so it was not treated as a fresh install. Starting a readiness review is optional and will not alter those records.</p>
+            <div class="inline-actions"><form method="post" asp-page-handler="StartReview"><button class="primary">Start readiness review</button></form><a class="button-link ghost" asp-page="/Index">Return to dashboard</a></div>
+        </section>
+    }
+    else if (session.Status == OnboardingSessionStatus.Deferred)
+    {
+        <section class="panel onboarding-callout">
+            <p class="eyebrow">Saved for later</p>
+            <h2>Your onboarding session is paused.</h2>
+            <p>All recorded check results are still here. Resume when convenient; existing agent settings, schedules, occurrences, and run history remain untouched.</p>
+            <form method="post" asp-page-handler="Resume"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" /><button class="primary">Resume setup</button></form>
+        </section>
+    }
+    else if (session.CurrentStep == OnboardingSteps.AgentSelectionPending)
+    {
+        <section class="panel onboarding-callout positive-callout">
+            <p class="eyebrow">Readiness complete</p>
+            <h2>Choose the agents you want to use.</h2>
+            <p>No installed agent is selected automatically. Choosing one starts only its configuration review; it does not enable, schedule, or run anything.</p>
+            <div class="inline-actions"><a class="button-link primary" asp-page="/Onboarding/Agents" asp-route-sessionId="@session.Id">Choose agents</a><form method="post" asp-page-handler="Defer"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" /><button class="secondary">Set up later</button></form><a class="button-link ghost" asp-page="/Agents/Index">View installed agents</a></div>
+        </section>
+    }
+    else
+    {
+        <section class="onboarding-summary" aria-label="Readiness summary">
+            <div><span>Required blockers</span><strong>@overview.BlockedCount</strong></div>
+            <div><span>Warnings</span><strong>@overview.WarningCount</strong></div>
+            <div><span>Required not checked</span><strong>@overview.UnknownRequiredCount</strong></div>
+            <div><span>Session revision</span><strong>@session.Revision</strong></div>
+        </section>
+
+        <div class="onboarding-toolbar">
+            <div><strong>Run checks when you are ready.</strong><span>Results are durable and safe to rerun. Protected storage is a separate explicit probe.</span></div>
+            <div class="inline-actions">
+                <form method="post" asp-page-handler="RunChecks"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" /><button class="primary">Run readiness checks</button></form>
+                <form method="post" asp-page-handler="Probe"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" /><button class="secondary">Test protected storage</button></form>
+            </div>
+        </div>
+
+        <section class="readiness-group" aria-labelledby="required-checks-title">
+            <div class="section-heading"><div><p class="eyebrow">Required</p><h2 id="required-checks-title">Platform prerequisites</h2></div><span>@required.Count check(s)</span></div>
+            <div class="readiness-grid">
+                @foreach (OnboardingCheckView check in required)
+                {
+                    <article class="readiness-card @check.Status.ToString().ToLowerInvariant()">
+                        <div class="readiness-card-heading"><span class="status-icon" aria-hidden="true">@(check.Status == OnboardingCheckStatus.Passed ? "✓" : check.Status == OnboardingCheckStatus.Warning ? "!" : check.Status == OnboardingCheckStatus.Blocked ? "×" : "?")</span><div><h3>@check.Definition.Title</h3><span class="status-text">@check.Status</span></div></div>
+                        <p>@check.Message</p><p class="supporting">@check.Definition.Description</p><div class="readiness-meta"><code>@check.ReasonCode</code><span>@(check.ObservedAtUtc?.ToLocalTime().ToString("g") ?? "Not run")</span></div>
+                        @if (check.RemediationKey is not null) { <div class="inline-actions"><a asp-page="/Settings/Index">Diagnostics</a><a asp-page="/About">Repair guidance</a>@if (check.Definition.Scope == OnboardingCheckScope.Packages) { <a asp-page="/Agents/Index">Installed agents</a> }</div> }
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="readiness-group" aria-labelledby="optional-checks-title">
+            <div class="section-heading"><div><p class="eyebrow">Optional and machine-dependent</p><h2 id="optional-checks-title">Operational caveats</h2></div><span>@optional.Count check(s)</span></div>
+            <div class="readiness-grid">
+                @foreach (OnboardingCheckView check in optional)
+                {
+                    <article class="readiness-card @check.Status.ToString().ToLowerInvariant()"><div class="readiness-card-heading"><span class="status-icon" aria-hidden="true">@(check.Status == OnboardingCheckStatus.Passed ? "✓" : check.Status == OnboardingCheckStatus.Warning ? "!" : "?")</span><div><h3>@check.Definition.Title</h3><span class="status-text">@check.Status</span></div></div><p>@check.Message</p><p class="supporting">@check.Definition.Description</p><div class="readiness-meta"><code>@check.ReasonCode</code><span>@(check.ObservedAtUtc?.ToLocalTime().ToString("g") ?? "Not run")</span></div><div class="inline-actions"><a asp-page="/WakeRemote/Index">Wake diagnostics</a><a asp-page="/About">Power limitations</a></div></article>
+                }
+            </div>
+        </section>
+
+        @if (agentChecks.Count > 0)
+        {
+            <section class="readiness-group" aria-labelledby="agent-checks-title"><div class="section-heading"><div><p class="eyebrow">Agent-dependent</p><h2 id="agent-checks-title">Installed agent prerequisites</h2></div><span>@agentChecks.Count check(s)</span></div><div class="readiness-grid">@foreach (OnboardingCheckView check in agentChecks) { <article class="readiness-card @check.Status.ToString().ToLowerInvariant()"><div class="readiness-card-heading"><span class="status-icon" aria-hidden="true">?</span><div><h3>@check.Definition.Title</h3><span class="status-text">@check.Status</span></div></div><p>@check.Message</p></article> }</div></section>
+        }
+
+        <section class="onboarding-actions panel">
+            <div><h2>Continue to agent selection</h2><p>Blocked or unchecked required items must be resolved. Warnings may be accepted explicitly because some Windows wake capabilities are hardware- or policy-dependent.</p></div>
+            <form method="post" asp-page-handler="Continue">
+                <input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" />
+                @if (overview.WarningCount > 0) { <label class="check-row"><input asp-for="AcknowledgeWarnings" /> <span>I understand the @overview.WarningCount current warning(s) and want to continue.</span></label> }
+                @if (overview.CanContinue) { <button class="primary">Continue</button> }
+                else { <button class="primary" disabled>Continue</button> }
+            </form>
+            @if (session.Kind == OnboardingSessionKind.FirstRun)
+            {
+                <form method="post" asp-page-handler="Defer"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" /><button class="ghost">Set up later</button></form>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Cancel"><input type="hidden" asp-for="SessionId" /><input type="hidden" asp-for="ExpectedRevision" /><button class="ghost">Cancel review</button></form>
+            }
+        </section>
+    }
+}

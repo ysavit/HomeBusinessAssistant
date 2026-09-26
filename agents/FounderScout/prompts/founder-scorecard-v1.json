@@ -1,0 +1,30 @@
+{
+  "version": "yc-scorecard-v1",
+  "qualityCategories": [
+    { "key": "founderExecution", "maximum": 20 },
+    { "key": "commitmentAndPosture", "maximum": 15 },
+    { "key": "tractionAndValidation", "maximum": 15 },
+    { "key": "marketPotential", "maximum": 15 },
+    { "key": "gtmAndDomainAdvantage", "maximum": 10 },
+    { "key": "ctoFit", "maximum": 10 },
+    { "key": "ideaClarity", "maximum": 5 },
+    { "key": "moatPotential", "maximum": 5 },
+    { "key": "technicalFeasibility", "maximum": 5 }
+  ],
+  "fitDimensions": [
+    { "key": "complementarySkillsOwnership", "maximum": 30 },
+    { "key": "founderEquityPosture", "maximum": 25 },
+    { "key": "technicalDomainAlignment", "maximum": 20 },
+    { "key": "timingLocationCompatibility", "maximum": 15 },
+    { "key": "ctoWorkloadRealism", "maximum": 10 }
+  ],
+  "riskPenalties": {
+    "unpaidDeveloperRisk": 20,
+    "founderReservesMostEquity": 15,
+    "overscopedTechnicalBuild": 10,
+    "noCustomerAccessPath": 10,
+    "ctoExpectedToOwnEverything": 10,
+    "indefinitePartTimeCommitment": 10,
+    "unavailableExternalDependency": 10
+  }
+}

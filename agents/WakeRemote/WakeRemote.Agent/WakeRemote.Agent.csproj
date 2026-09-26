@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>WakeRemote</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\HomeBusinessAssistant.AgentSdk\HomeBusinessAssistant.AgentSdk.csproj" />
+    <ProjectReference Include="..\..\..\src\HomeBusinessAssistant.Application\HomeBusinessAssistant.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\HomeBusinessAssistant.Windows\HomeBusinessAssistant.Windows.csproj" />
+    <ProjectReference Include="..\WakeRemote.Infrastructure\WakeRemote.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

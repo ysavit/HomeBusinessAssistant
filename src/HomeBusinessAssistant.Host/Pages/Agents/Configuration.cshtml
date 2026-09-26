@@ -1,0 +1,202 @@
+@page "/Agents/{id}/configuration"
+@model HomeBusinessAssistant.Host.Pages.Agents.ConfigurationModel
+@using global::WakeRemote.Application
+@{
+    ViewData["Title"] = $"{Model.Agent?.DisplayName} configuration";
+}
+
+<header class="page-header">
+    <div><p class="eyebrow">Validated configuration · immutable revisions</p><h1>@Model.Agent?.DisplayName</h1><p>Revision @Model.Form.ExpectedRevisionNumber. Concurrent edits are rejected using both revision number and hash.</p></div>
+    <a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@Model.Form.AgentId">Back to agent</a>
+</header>
+
+<nav class="tabs" aria-label="Configuration sections"><a href="#editor" aria-current="page">Editor</a><a href="#history">Revision history</a>@if (Model.IsFounderScout || Model.GenericSchema?.Fields.Any(field => field.IsSecretReference) == true) { <a href="#secret">Secret status</a> }</nav>
+
+<div class="content-grid">
+    <div class="stack">
+        <form id="editor" method="post" asp-page-handler="Save" class="form-shell">
+            <input asp-for="Form.AgentId" type="hidden" />
+            <input asp-for="Form.ExpectedRevisionNumber" type="hidden" />
+            <input asp-for="Form.ExpectedHash" type="hidden" />
+            <div asp-validation-summary="ModelOnly"></div>
+
+            @if (Model.IsWakeRemote)
+            {
+                <section class="form-section">
+                    <h2>Timing and availability</h2>
+                    <div class="form-grid">
+                        <div><label asp-for="Form.TimeZoneId">Windows time zone</label><input asp-for="Form.TimeZoneId" /><span asp-validation-for="Form.TimeZoneId"></span></div>
+                        <div><label asp-for="Form.NetworkReadyTimeoutSeconds">Network timeout (seconds)</label><input asp-for="Form.NetworkReadyTimeoutSeconds" type="number" min="1" max="900" /><span asp-validation-for="Form.NetworkReadyTimeoutSeconds"></span></div>
+                        <div><label asp-for="Form.NetworkProbeIntervalSeconds">Probe interval (seconds)</label><input asp-for="Form.NetworkProbeIntervalSeconds" type="number" min="1" max="60" /><span asp-validation-for="Form.NetworkProbeIntervalSeconds"></span></div>
+                        <div><label asp-for="Form.WindowHeartbeatIntervalSeconds">Window heartbeat (seconds)</label><input asp-for="Form.WindowHeartbeatIntervalSeconds" type="number" min="1" max="300" /><span asp-validation-for="Form.WindowHeartbeatIntervalSeconds"></span></div>
+                        <div><label asp-for="Form.MaximumWakeStalenessSeconds">Maximum wake staleness (seconds)</label><input asp-for="Form.MaximumWakeStalenessSeconds" type="number" min="0" max="86400" /></div>
+                        <div><label class="check"><input asp-for="Form.KeepDisplayOn" /> Keep the display on during availability windows</label><p class="field-help">System keep-awake is always released to normal Windows policy after the window.</p></div>
+                    </div>
+                </section>
+                <section class="form-section">
+                    <h2>Remote provider</h2>
+                    <div class="form-grid">
+                        <div><label asp-for="Form.RemoteProviderKind">Provider type</label><select asp-for="Form.RemoteProviderKind" asp-items="Html.GetEnumSelectList<RemoteProviderKind>()"></select></div>
+                        <div><label asp-for="Form.ServiceNames">Service names</label><input asp-for="Form.ServiceNames" /><p class="field-help">Comma-separated local service names.</p></div>
+                        <div><label asp-for="Form.ProcessNames">Process names</label><input asp-for="Form.ProcessNames" /><p class="field-help">Comma-separated local process names.</p></div>
+                        <div><label class="check"><input asp-for="Form.CheckLocalListener" /> Check a loopback listener</label></div>
+                        <div><label asp-for="Form.ListenerHost">Listener host</label><input asp-for="Form.ListenerHost" /></div>
+                        <div><label asp-for="Form.ListenerPort">Listener port</label><input asp-for="Form.ListenerPort" type="number" min="1" max="65535" /></div>
+                    </div>
+                </section>
+                <section class="form-section">
+                    <h2>Optional readiness probes</h2>
+                    <div class="form-grid">
+                        <div><label class="check"><input asp-for="Form.DnsProbeEnabled" /> Enable DNS probe</label><label asp-for="Form.DnsHostName">DNS host</label><input asp-for="Form.DnsHostName" /></div>
+                        <div><label class="check"><input asp-for="Form.TcpProbeEnabled" /> Enable TCP probe</label><label asp-for="Form.TcpHost">TCP host</label><input asp-for="Form.TcpHost" /><label asp-for="Form.TcpPort">TCP port</label><input asp-for="Form.TcpPort" type="number" min="0" max="65535" /></div>
+                        <div class="wide"><label for="force-sleep-status">Force sleep after window</label><input id="force-sleep-status" value="Unsupported in V1" disabled /><p class="field-help">The agent releases its keep-awake request and lets normal Windows power policy resume. It never forces sleep.</p></div>
+                    </div>
+                </section>
+            }
+            else if (Model.IsFounderScout)
+            {
+                <section class="form-section">
+                    <h2>Storage and discovery</h2>
+                    <div class="form-grid">
+                        <div class="wide"><label asp-for="Form.DataDirectory">Data root display</label><input asp-for="Form.DataDirectory" /><p class="field-help">Browser profile roots remain sensitive and are never shown or exported.</p></div>
+                        <div><label class="check"><input asp-for="Form.DiscoveryEnabled" /> Enable discovery</label><label asp-for="Form.BrowserConcurrency">Browser concurrency</label><input asp-for="Form.BrowserConcurrency" type="number" min="1" max="1" /></div>
+                        <div><label asp-for="Form.MaxNewProfilesPerRun">New profiles per run</label><input asp-for="Form.MaxNewProfilesPerRun" type="number" min="1" max="500" /><span asp-validation-for="Form.MaxNewProfilesPerRun"></span></div>
+                        <div><label asp-for="Form.MaxViewedProfilesPerRun">Viewed profiles per run</label><input asp-for="Form.MaxViewedProfilesPerRun" type="number" min="1" max="1000" /></div>
+                        <div><label asp-for="Form.MaxNewProfilesPerDay">New profiles per day</label><input asp-for="Form.MaxNewProfilesPerDay" type="number" min="1" max="2000" /></div>
+                        <div><label asp-for="Form.DiscoveryMaxRuntimeSeconds">Maximum runtime (seconds)</label><input asp-for="Form.DiscoveryMaxRuntimeSeconds" type="number" min="60" max="7200" /></div>
+                        <div><label asp-for="Form.CooldownAfterCompletionSeconds">Fixed delay after completion (seconds)</label><input asp-for="Form.CooldownAfterCompletionSeconds" type="number" min="60" max="604800" /></div>
+                        <div><label asp-for="Form.StopAfterConsecutiveKnownProfiles">Stop after known profiles</label><input asp-for="Form.StopAfterConsecutiveKnownProfiles" type="number" min="1" max="100" /></div>
+                        <div class="wide"><label asp-for="Form.StartupSchoolOptionsJson">Versioned browser source options</label><textarea asp-for="Form.StartupSchoolOptionsJson" rows="18" spellcheck="false"></textarea><span asp-validation-for="Form.StartupSchoolOptionsJson"></span><p class="field-help">Use semantic roles/text/labels or stable data attributes. XPath and positional nth-child selectors are rejected. Authentication remains in the dedicated browser profile, never in this JSON.</p></div>
+                        <div class="wide"><label asp-for="Form.ProcessingOptionsJson">Versioned processing and screening policy</label><textarea asp-for="Form.ProcessingOptionsJson" rows="14" spellcheck="false"></textarea><span asp-validation-for="Form.ProcessingOptionsJson"></span><p class="field-help">Parser/redactor/ruleset versions, health thresholds, reversible hard filters, and routing thresholds. Protected attributes are never valid signals.</p></div>
+                    </div>
+                    <p class="field-help">Authentication failure, access denial, throttling, and challenge detection always stop the current account/run. Automatic enforcement-signal failover is fixed off.</p>
+                </section>
+                <section class="form-section">
+                    <h2>Analysis and ranking</h2>
+                    <div class="form-grid">
+                        <div><label class="check"><input asp-for="Form.AnalysisEnabled" /> Enable analysis</label><label class="check"><input asp-for="Form.FastScreenEnabled" /> Enable fast screen</label></div>
+                        <div><label asp-for="Form.AnalysisBatchSize">Batch size</label><input asp-for="Form.AnalysisBatchSize" type="number" min="1" max="500" /><span asp-validation-for="Form.AnalysisBatchSize"></span></div>
+                        <div><label asp-for="Form.AnalysisMaximumConcurrency">Maximum concurrency</label><input asp-for="Form.AnalysisMaximumConcurrency" type="number" min="1" max="16" /><span asp-validation-for="Form.AnalysisMaximumConcurrency"></span></div>
+                        <div><label asp-for="Form.DeepAnalysisThreshold">Deep-analysis threshold</label><input asp-for="Form.DeepAnalysisThreshold" type="number" min="0" max="100" /></div>
+                        <div><label asp-for="Form.AnalysisMaximumRetries">Maximum retries</label><input asp-for="Form.AnalysisMaximumRetries" type="number" min="0" max="10" /></div>
+                        <div><label asp-for="Form.StrongConnectThreshold">Strong-connect threshold</label><input asp-for="Form.StrongConnectThreshold" type="number" min="0" max="100" /></div>
+                        <div><label asp-for="Form.ExploratoryThreshold">Exploratory threshold</label><input asp-for="Form.ExploratoryThreshold" type="number" min="0" max="100" /></div>
+                        <div><label asp-for="Form.MonitorThreshold">Monitor threshold</label><input asp-for="Form.MonitorThreshold" type="number" min="0" max="100" /></div>
+                        <div><label asp-for="Form.MinimumConfidence">Minimum confidence</label><input asp-for="Form.MinimumConfidence" type="number" min="0" max="1" step="0.01" /></div>
+                        <div><label asp-for="Form.TopCandidateCount">Top candidate count</label><input asp-for="Form.TopCandidateCount" type="number" min="1" max="1000" /></div>
+                        <div><label asp-for="Form.ManualInvitationQueueSize">Manual invitation queue</label><input asp-for="Form.ManualInvitationQueueSize" type="number" min="1" max="500" /></div>
+                        <div><label asp-for="Form.ReserveQueueSize">Reserve queue</label><input asp-for="Form.ReserveQueueSize" type="number" min="0" max="500" /></div>
+                        <div><label asp-for="Form.OurFitWeight">Our-fit weight</label><input asp-for="Form.OurFitWeight" type="number" min="0" max="1" step="0.01" /></div>
+                        <div><label asp-for="Form.FounderQualityWeight">Founder-quality weight</label><input asp-for="Form.FounderQualityWeight" type="number" min="0" max="1" step="0.01" /></div>
+                        <div><label asp-for="Form.ConfidenceWeight">Confidence weight</label><input asp-for="Form.ConfidenceWeight" type="number" min="0" max="1" step="0.01" /></div>
+                        <div><label asp-for="Form.ActivityWeight">Activity weight</label><input asp-for="Form.ActivityWeight" type="number" min="0" max="1" step="0.01" /></div>
+                        <div><label asp-for="Form.MaximumRiskPenalty">Maximum risk penalty</label><input asp-for="Form.MaximumRiskPenalty" type="number" min="0" max="100" step="0.1" /></div>
+                    </div>
+                    <p class="field-help">The four positive priority weights must total exactly 1.00. Risk penalties are subtracted separately.</p>
+                </section>
+                <section class="form-section">
+                    <h2>Invitation drafts and AI</h2>
+                    <div class="form-grid">
+                        <div><label class="check"><input asp-for="Form.GenerateShortVersion" /> Generate short draft</label><label class="check"><input asp-for="Form.GenerateDetailedVersion" /> Generate detailed draft</label></div>
+                        <div><label asp-for="Form.InvitationMaximumCharacters">Maximum characters</label><input asp-for="Form.InvitationMaximumCharacters" type="number" min="100" max="5000" /></div>
+                        <div><label asp-for="Form.SimilarityThreshold">Similarity threshold</label><input asp-for="Form.SimilarityThreshold" type="number" min="0" max="1" step="0.01" /></div>
+                        <div><label asp-for="Form.AiProvider">AI provider</label><input asp-for="Form.AiProvider" /></div>
+                        <div><label asp-for="Form.AiEndpoint">Endpoint</label><input asp-for="Form.AiEndpoint" type="url" /><p class="field-help">Endpoint metadata is configuration; credentials are separate.</p></div>
+                        <div><label asp-for="Form.AiDeployment">Deployment</label><input asp-for="Form.AiDeployment" /></div>
+                        <div><label asp-for="Form.AiSecretReference">Secret reference</label><input asp-for="Form.AiSecretReference" readonly /><span asp-validation-for="Form.AiSecretReference"></span></div>
+                        <div><label asp-for="Form.AiRequestTimeoutSeconds">Request timeout (seconds)</label><input asp-for="Form.AiRequestTimeoutSeconds" type="number" min="1" max="900" /></div>
+                    </div>
+                </section>
+                <section class="form-section">
+                    <h2>Founder persona</h2>
+                    <div class="form-grid">
+                        <div><label asp-for="Form.PersonaReference">Persona reference</label><input asp-for="Form.PersonaReference" /></div>
+                        <div><label asp-for="Form.PersonaDisplayName">Display name</label><input asp-for="Form.PersonaDisplayName" /></div>
+                        <div><label asp-for="Form.PersonaTargetRole">Target role</label><input asp-for="Form.PersonaTargetRole" /></div>
+                        <div><label asp-for="Form.PersonaMessageTone">Message tone</label><input asp-for="Form.PersonaMessageTone" /></div>
+                        <div class="wide"><label asp-for="Form.PersonaStrengths">Strengths, one per line</label><textarea asp-for="Form.PersonaStrengths" rows="4"></textarea></div>
+                        <div class="wide"><label asp-for="Form.PersonaSeeking">Seeking, one per line</label><textarea asp-for="Form.PersonaSeeking" rows="4"></textarea></div>
+                        <div class="wide"><label asp-for="Form.PersonaAvoidClaims">Claims to avoid, one per line</label><textarea asp-for="Form.PersonaAvoidClaims" rows="4"></textarea></div>
+                    </div>
+                </section>
+                <section class="form-section">
+                    <h2>Retention</h2>
+                    <div class="form-grid">
+                        <div><label asp-for="Form.RawProfileDays">Raw profile days</label><input asp-for="Form.RawProfileDays" type="number" min="1" max="365" /></div>
+                        <div><label asp-for="Form.ErrorArtifactDays">Error artifact days</label><input asp-for="Form.ErrorArtifactDays" type="number" min="1" max="365" /></div>
+                        <div><label asp-for="Form.ReportDays">Report days</label><input asp-for="Form.ReportDays" type="number" min="1" max="3650" /></div>
+                    </div>
+                </section>
+            }
+            else if (Model.GenericSchema is not null)
+            {
+                <section class="form-section">
+                    <h2>@Model.GenericSchema.Title</h2>
+                    @if (!string.IsNullOrWhiteSpace(Model.GenericSchema.Description)) { <p class="supporting">@Model.GenericSchema.Description</p> }
+                    @if (!Model.GenericSchema.SupportsGenericEditor)
+                    {
+                        <div class="notice warning" role="status"><strong>Typed adapter required.</strong> @Model.GenericSchema.UnsupportedReason No configuration values can be changed from the generic editor.</div>
+                    }
+                    else
+                    {
+                        <partial name="_GenericConfigurationFields" model="@(new HomeBusinessAssistant.Host.Pages.Components.GenericConfigurationFieldsView(Model.GenericSchema, Model.GenericValues, "GenericValues"))" />
+                    }
+                </section>
+            }
+
+            <section class="form-section">
+                <h2>Revision note</h2>
+                <label asp-for="Form.ChangeSummary">Change summary</label><input asp-for="Form.ChangeSummary" /><span asp-validation-for="Form.ChangeSummary"></span>
+                <div class="page-actions" style="margin-top:1rem">@if (Model.GenericSchema?.SupportsGenericEditor != false) { <button type="submit" class="primary">Validate and save revision</button> }<a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@Model.Form.AgentId">Cancel</a></div>
+            </section>
+        </form>
+
+        <section id="history" class="table-shell">
+            <div class="panel panel-heading"><h2>Immutable revision history</h2></div>
+            <div class="table-scroll"><table><thead><tr><th>Revision</th><th>Created</th><th>Changed by</th><th>Summary</th><th>Hash</th></tr></thead><tbody>@foreach (var revision in Model.History) { <tr><td><a asp-page="/Agents/ConfigurationHistory" asp-route-id="@Model.Form.AgentId" asp-route-revisionId="@revision.Id">@revision.RevisionNumber</a></td><td>@revision.CreatedAtUtc.ToLocalTime().ToString("g")</td><td>@revision.ChangedBy</td><td>@revision.ChangeSummary</td><td class="code">@revision.ConfigurationHash[..Math.Min(12, revision.ConfigurationHash.Length)]…</td></tr> }</tbody></table></div>
+        </section>
+    </div>
+
+    <aside class="stack">
+        <section class="panel"><div class="panel-heading"><h2>Validation</h2></div><p class="supporting">Server-side schema and typed validation is authoritative. A no-op save reuses the current immutable revision and reports that nothing changed.</p></section>
+        @if (Model.IsFounderScout)
+        {
+            <section id="secret" class="panel">
+                <div class="panel-heading"><h2>AI secret</h2><span class="pill @(Model.SecretExists ? "positive" : "attention")">@(Model.SecretExists ? "Configured" : "Missing")</span></div>
+                <p class="supporting">The secret value is protected separately with Windows CurrentUser DPAPI. It is never read into this page or stored in configuration JSON.</p>
+                @if (Model.LastSecretChange is not null) { <p class="supporting">Last changed @Model.LastSecretChange.TimestampUtc.ToLocalTime().ToString("g") · <a asp-page="/Audit/Details" asp-route-id="@Model.LastSecretChange.Id">@Model.LastSecretChange.Action audit</a></p> } else { <p class="supporting">No append-only secret audit event is available yet.</p> }
+                <form method="post" asp-page-handler="SetSecret">
+                    <label for="secret-value">New secret value</label><input id="secret-value" name="secretValue" type="password" autocomplete="new-password" required />
+                    <button type="submit" class="secondary" style="margin-top:.65rem">Set protected secret</button>
+                </form>
+                @if (Model.SecretExists)
+                {
+                    <form method="post" asp-page-handler="DeleteSecret" data-confirm="Remove the protected AI secret for the current Windows user?" style="margin-top:.65rem"><button type="submit" class="danger">Delete secret</button></form>
+                }
+            </section>
+        }
+        else if (Model.GenericSchema?.Fields.Any(field => field.IsSecretReference) == true)
+        {
+            <section id="secret" class="panel">
+                <div class="panel-heading"><h2>Protected secrets</h2></div>
+                <p class="supporting">Values are protected separately for the current Windows user and are never read into this page or stored in configuration JSON.</p>
+                @foreach (var field in Model.GenericSchema.Fields.Where(field => field.IsSecretReference))
+                {
+                    bool exists = Model.GenericSecretExists.TryGetValue(field.Name, out bool present) && present;
+                    <div class="stack" style="margin-top:1rem">
+                        <div class="panel-heading"><strong>@field.Title</strong><span class="pill @(exists ? "positive" : "attention")">@(exists ? "Configured" : "Missing")</span></div>
+                        <form method="post" asp-page-handler="SetSecret">
+                            <input type="hidden" name="fieldName" value="@field.Name" />
+                            <label for="secret-@field.Name">New secret value</label><input id="secret-@field.Name" name="secretValue" type="password" autocomplete="new-password" required />
+                            <button type="submit" class="secondary" style="margin-top:.65rem">Set protected secret</button>
+                        </form>
+                        @if (exists)
+                        {
+                            <form method="post" asp-page-handler="DeleteSecret" data-confirm="Remove this protected secret for the current Windows user?"><input type="hidden" name="fieldName" value="@field.Name" /><button type="submit" class="danger">Delete secret</button></form>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </aside>
+</div>
