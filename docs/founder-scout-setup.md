@@ -9,21 +9,15 @@ Founder Scout discovers and evaluates startup-founder profiles using a dedicated
 From the repository root:
 
 ```powershell
-dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- db-path
-dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- list --max 20
-dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- run --max 5 --delay 5
+Copy-Item agents/FounderScout/FounderScout.SimpleCli/appsettings.example.json agents/FounderScout/FounderScout.SimpleCli/appsettings.json
+notepad agents/FounderScout/FounderScout.SimpleCli/appsettings.json
+dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- list
+dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- run
 ```
 
-`run` searches up to five new profiles by default, saves each before AI, screens them, then analyzes the screened candidates touched by that scan one at a time. It prints each phase and the final stored counts. On the first run, complete Startup School sign-in in the headed Chrome window. The console never asks for or stores your Startup School password. Use `scan` for capture and screening without an AI call, or `analyze` to retry saved candidates later:
+Edit the local `appsettings.json` before `run`: set `SimpleScout:ApiKey` to your OpenAI Platform API key, and review `DatabasePath`, `MaxCandidatesPerRun` (1–5), `ListLimit`, `DelaySeconds`, `Model`, and optional `FounderContext`. The filled-in file is ignored by Git and its key is never printed or stored in SQLite. It is a local plain-text config file, so protect it with your Windows account and do not share it. The checked-in example has an empty key. OpenAI account rate or quota errors stop analysis; captured candidates remain in SQLite.
 
-```powershell
-dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- scan --max 5
-dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- analyze --max 5
-```
-
-For AI, the console uses `OPENAI_API_KEY` from its process environment when set. Otherwise, it reads the existing current-user DPAPI-protected key saved in Founder Scout Settings. The key is never printed or stored in SQLite. Set a model with `--model <model-id>`; the default is the code-owned model. OpenAI account rate or quota errors stop the analysis; captured candidates remain in SQLite for a later `analyze` retry. The console uses the code-owned local founder persona and does not import the web UI's customized context.
-
-The default database is `%LOCALAPPDATA%\HomeBusinessAssistant\data\agents\founder-scout\founders.db`. `db-path` prints the exact path. `list` reads safe candidate summaries from that database. To inspect tables with a SQLite client, open this file **read-only** and keep its `-wal` and `-shm` files beside it while the app is running. `assistant.db` in the parent data directory stores platform runs and configuration; candidate profiles and evaluations live in `founders.db`. Use `--data-root <absolute-path>` to run against a separate test data directory.
+`run` searches at most five new profiles, saves each before AI, screens them, then analyzes the screened candidates touched by that scan one at a time. It prints each phase and the final stored counts. On the first run, complete Startup School sign-in in the headed Chrome window. The console never asks for or stores your Startup School password. `list` prints the configured database path, total candidate count, and the newest candidate summaries. To inspect tables with a SQLite client, open the configured `DatabasePath` **read-only** and keep its `-wal` and `-shm` files beside it while the app is running. `assistant.db` in the parent data directory stores platform runs and configuration; candidate profiles and evaluations live in `founders.db`.
 
 ## Browser bootstrap
 

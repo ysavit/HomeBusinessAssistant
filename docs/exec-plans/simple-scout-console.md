@@ -2,7 +2,7 @@
 
 ## Purpose and user-visible outcome
 
-One console command searches a small bounded set of Startup School profiles, saves them to the existing `founders.db`, then evaluates saved candidates with the existing OpenAI pipeline. `list` and `db-path` make storage observable without the web UI.
+One console command searches a small bounded set of Startup School profiles, saves them to the configured `founders.db`, then evaluates saved candidates with the existing OpenAI pipeline. `list` makes storage observable without the web UI.
 
 ## Current repository state
 
@@ -10,11 +10,11 @@ One console command searches a small bounded set of Startup School profiles, sav
 
 ## Scope and non-goals
 
-Add a small Windows console entry point with `run`, `analyze`, `list`, and `db-path`. Reuse the current agent and persistence rather than introduce another schema. Keep browser authentication manual, invitations manual, and AI failures visible. Scheduling, tray UI, and live provider success are outside this increment.
+Keep a small Windows console entry point with only `run` and `list`. Reuse the current agent and persistence rather than introduce another schema. Keep browser authentication manual, invitations manual, and AI failures visible. Scheduling, tray UI, and live provider success are outside this increment.
 
 ## Design and data flow
 
-`run` → current `FounderScoutCommand start` → `founders.db` capture/screen → queue bounded screened candidates → current `FounderScoutCommand analyze --phase deep` → `founders.db` evaluation. The console uses the Runner's private execution-input file manager, deletes each envelope after invocation, and reads the existing DPAPI key when present or a process environment variable. It never prints a key or profile body. `list` uses the existing result projection.
+`run` → current `FounderScoutCommand start` → `founders.db` capture/screen → queue bounded screened candidates → current `FounderScoutCommand analyze --phase deep` → `founders.db` evaluation. The console uses the Runner's private execution-input file manager, deletes each envelope after invocation, and reads the API key from a local, ignored `appsettings.json`. It never prints a key or profile body. `list` uses the existing result projection.
 
 ## Milestones
 
@@ -26,7 +26,7 @@ Add a small Windows console entry point with `run`, `analyze`, `list`, and `db-p
 
 ## Detailed steps
 
-Add `agents/FounderScout/FounderScout.SimpleCli` to the solution. Use the existing `RunTemporaryFileManager`, `FounderScoutCommand`, `FounderScoutDatabaseInitializer`, and `FounderScoutResultsService`. Keep configuration code-owned with a small per-run limit and explicit model selection. Add direct CLI tests for path/list/argument handling and a fixture-backed smoke if the existing test helpers allow it without live network.
+The console remains in the solution and uses the existing `RunTemporaryFileManager`, `FounderScoutCommand`, `FounderScoutDatabaseInitializer`, and `FounderScoutResultsService`. Settings live in a local JSON file with an absolute database path and hard maximum of five new candidates per run. The committed example omits the key; the filled-in file is ignored. Direct CLI tests cover config validation, list, missing key, and command restriction.
 
 ## Progress
 
@@ -34,17 +34,21 @@ Add `agents/FounderScout/FounderScout.SimpleCli` to the solution. Use the existi
 
 2026-10-01: the requested source, tests, and prior Founder Scout working-tree changes were committed as `aaca25e` and pushed to `origin/simple_scout`. This plan/status handoff is recorded in a follow-up documentation commit on the same branch.
 
+2026-10-01: user narrowed the console to `run` and `list` and moved the DB path, API key, model, delay, and limits to local `appsettings.json`. The local file is ignored by Git; `appsettings.example.json` documents the shape. Direct AppData listing revealed that database initialization requires writes; `list` now uses a read-only SQLite connection. Build, full tests, focused tests, and format passed; live search/AI was not invoked.
+
 ## Decisions
 
-Share the existing `founders.db` and profile directory so the console and UI see the same candidates. Use a bounded default of five new profiles per run and one AI request at a time. Do not automatically send invitations. The console will show captured profiles even when OpenAI returns a rate or quota limit.
+Share the existing `founders.db` and profile directory when `DatabasePath` points to the Host's DB, so the console and UI see the same candidates. Enforce a ceiling of five new profiles per run and one AI request at a time. Do not automatically send invitations. The console will show captured profiles even when OpenAI returns a rate or quota limit. The requested plain-text key exists only in the local ignored config, never in a commit or SQLite.
 
 ## Validation
 
 Executed `dotnet restore HomeBusinessAssistant.sln` (pass), `dotnet build HomeBusinessAssistant.sln -c Release --no-restore` (pass, zero warnings/errors), `dotnet test HomeBusinessAssistant.sln -c Release --no-build` (pass: 348 tests, three opt-in skips), and `dotnet format HomeBusinessAssistant.sln --verify-no-changes --no-restore` (pass). Targeted console tests passed 3/3 and targeted stored-analysis argument test passed 1/1. `db-path` printed the current-user founder database path; `list --max 3` read 94 saved candidates from that database. A first full test run failed the new project's architecture allow-list and two backup/restore checks while a live Host was active; the graph was updated, the Host was stopped, the three failed tests passed on repeat, and the later full solution run passed. No live site or AI call was made by the console validation.
 
+For the configuration revision, `dotnet restore HomeBusinessAssistant.sln` passed; final `dotnet build HomeBusinessAssistant.sln -c Release --no-restore` passed with zero warnings/errors; final `dotnet test HomeBusinessAssistant.sln -c Release --no-build` passed 353 tests with three opt-in skips; `dotnet format HomeBusinessAssistant.sln --verify-no-changes --no-restore` passed; focused console tests passed 8/8. `dotnet run ... -- run` stopped before database/browser work because the local key is blank, as intended. A direct `list` against the current-user AppData DB failed with SQLite Error 14 under the restricted workspace; the new regression lists a real migrated temporary SQLite DB successfully. No live browser or provider call was made.
+
 ## Recovery and rollback
 
-Each captured profile is committed before AI. If AI fails, saved candidates remain available for `analyze`. Private execution-input files are removed in `finally`; stale files can be handled by the existing temporary-file manager. The new project can be removed without changing the database schema.
+Each captured profile is committed before AI. If AI fails, saved candidates remain in SQLite. A later `run` can touch and queue candidates again. Private execution-input files are removed in `finally`; stale files can be handled by the existing temporary-file manager. The new project can be removed without changing the database schema.
 
 ## Remaining risks and follow-up
 

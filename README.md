@@ -114,7 +114,7 @@ Then open `http://127.0.0.1:5180/FounderScout` in Edge or Chrome. No web usernam
 
 See [docs/development.md](docs/development.md) for repository conventions and validation details.
 
-For a smaller interactive Scout path, use `dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- run --max 5`. It searches, saves to the existing local `founders.db`, and analyzes the candidates touched by that scan. `list` and `db-path` show the saved results and exact SQLite location. See [Founder Scout setup](docs/founder-scout-setup.md) for commands and AI key setup.
+For a smaller interactive Scout path, configure the ignored `agents/FounderScout/FounderScout.SimpleCli/appsettings.json`, then use `dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- run`. It searches up to five candidates, saves to the configured local `founders.db`, and analyzes the candidates touched by that scan. `list` shows saved results and the SQLite location. See [Founder Scout setup](docs/founder-scout-setup.md) for the config and commands.
 
 For deployment and operations, see [installation](docs/installation.md), [operations](docs/operations.md), [backup/restore](docs/backup-restore.md), and [security/privacy](docs/security-privacy.md).
 

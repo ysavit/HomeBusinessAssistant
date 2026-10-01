@@ -10,7 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\FounderScout.Agent\FounderScout.Agent.csproj" />
     <ProjectReference Include="..\..\..\src\HomeBusinessAssistant.Infrastructure\HomeBusinessAssistant.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\..\src\HomeBusinessAssistant.Windows\HomeBusinessAssistant.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>

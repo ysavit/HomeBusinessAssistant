@@ -49,6 +49,7 @@ secrets/
 *.secrets.json
 appsettings.Local.json
 appsettings.*.local.json
+agents/FounderScout/FounderScout.SimpleCli/appsettings.json
 *.temporary-config.json
 
 # OS files

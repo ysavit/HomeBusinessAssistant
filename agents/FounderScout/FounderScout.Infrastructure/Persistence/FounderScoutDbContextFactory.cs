@@ -38,6 +38,30 @@ public sealed class FounderScoutDbContextFactory : IDbContextFactory<FounderScou
         return new(builder.Options);
     }
 
+    /// <summary>Opens an existing database for list and reporting queries without bootstrap writes.</summary>
+    public static FounderScoutDbContextFactory CreateReadOnly(string databasePath, TimeSpan busyTimeout)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        if (busyTimeout <= TimeSpan.Zero || busyTimeout > TimeSpan.FromSeconds(60))
+        {
+            throw new ArgumentOutOfRangeException(nameof(busyTimeout));
+        }
+
+        string connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.GetFullPath(databasePath),
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+            ForeignKeys = true,
+            DefaultTimeout = (int)Math.Ceiling(busyTimeout.TotalSeconds),
+        }.ToString();
+        var builder = new DbContextOptionsBuilder<FounderScoutDbContext>();
+        builder.UseSqlite(connectionString);
+        builder.EnableDetailedErrors();
+        builder.EnableSensitiveDataLogging(false);
+        return new(builder.Options);
+    }
+
     /// <inheritdoc />
     public FounderScoutDbContext CreateDbContext() => new(options);
 
