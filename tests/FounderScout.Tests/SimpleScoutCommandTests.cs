@@ -64,22 +64,20 @@ internal sealed class SimpleScoutCommandTests
     }
 
     [Test]
-    public async Task RunWithoutConfiguredKeyFailsBeforeCreatingDatabaseOrBrowserProfile()
+    public async Task FiftyCandidateLimitIsAcceptedForCapture()
     {
         string root = Path.Combine(Path.GetTempPath(), $"simple-scout-key-{Guid.NewGuid():N}");
-        string configPath = WriteSettings(root);
-        using var output = new StringWriter();
-        using var error = new StringWriter();
+        string configPath = WriteSettings(root, maximum: 50);
 
         try
         {
-            int exit = await SimpleScoutCommand.ExecuteAsync(
-                ["run"], output, error, TimeProvider.System, settingsPath: configPath);
+            (SimpleScoutSettings? settings, string? error) = await SimpleScoutSettings.LoadAsync(configPath);
 
             Assert.Multiple(() =>
             {
-                Assert.That(exit, Is.Not.Zero);
-                Assert.That(error.ToString(), Does.Contain("SimpleScout:ApiKey"));
+                Assert.That(settings?.MaxCandidatesPerRun, Is.EqualTo(50));
+                Assert.That(settings?.MaxCandidatesPerDay, Is.EqualTo(150));
+                Assert.That(error, Is.Null);
                 Assert.That(File.Exists(Path.Combine(root, "founders.db")), Is.False);
             });
         }
@@ -90,10 +88,10 @@ internal sealed class SimpleScoutCommandTests
     }
 
     [Test]
-    public async Task MoreThanFiveCandidatesIsRejectedBeforeDatabaseOrBrowserWork()
+    public async Task MoreThanFiftyCandidatesIsRejectedBeforeDatabaseOrBrowserWork()
     {
         string root = Path.Combine(Path.GetTempPath(), $"simple-scout-bound-{Guid.NewGuid():N}");
-        string configPath = WriteSettings(root, maximum: 6);
+        string configPath = WriteSettings(root, maximum: 51);
         using var output = new StringWriter();
         using var error = new StringWriter();
 
@@ -105,7 +103,7 @@ internal sealed class SimpleScoutCommandTests
             Assert.Multiple(() =>
             {
                 Assert.That(exit, Is.Not.Zero);
-                Assert.That(error.ToString(), Does.Contain("MaxCandidatesPerRun 1..5"));
+                Assert.That(error.ToString(), Does.Contain("MaxCandidatesPerRun 1..50"));
                 Assert.That(File.Exists(Path.Combine(root, "founders.db")), Is.False);
             });
         }

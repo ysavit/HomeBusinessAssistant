@@ -26,7 +26,7 @@ Keep a small Windows console entry point with only `run` and `list`. Reuse the c
 
 ## Detailed steps
 
-The console remains in the solution and uses the existing `RunTemporaryFileManager`, `FounderScoutCommand`, `FounderScoutDatabaseInitializer`, and `FounderScoutResultsService`. Settings live in a local JSON file with an absolute database path and hard maximum of five new candidates per run. The committed example omits the key; the filled-in file is ignored. Direct CLI tests cover config validation, list, missing key, and command restriction.
+The console remains in the solution and uses the existing `RunTemporaryFileManager`, `FounderScoutCommand`, `FounderScoutDatabaseInitializer`, and `FounderScoutResultsService`. Settings live in a local JSON file with an absolute database path, a maximum of 50 new candidates per run, and a bounded daily limit. The committed example omits the key; the filled-in file is ignored. Direct CLI tests cover config validation, list, and command restriction.
 
 ## Progress
 
@@ -36,9 +36,13 @@ The console remains in the solution and uses the existing `RunTemporaryFileManag
 
 2026-10-01: user narrowed the console to `run` and `list` and moved the DB path, API key, model, delay, and limits to local `appsettings.json`. The local file is ignored by Git; `appsettings.example.json` documents the shape. Direct AppData listing revealed that database initialization requires writes; `list` now uses a read-only SQLite connection. Build, full tests, focused tests, and format passed; live search/AI was not invoked.
 
+2026-10-01: user supplied a durable CTO/co-founder evaluation brief. It was added as the code-owned default persona context, copied into the checked-in console example and the ignored local config, and kept out of this plan and project-state documentation. The existing Host configuration revision has separate saved context and is not overwritten by this console edit.
+
+2026-10-01: owner requested up to 50 saved profiles and continued capture despite AI failure. The console bound was raised to 50 and the daily cap exposed in local settings. The first live 50-limit run hit the old daily cap after one capture; a second run with daily cap 150 saved and screened 12 more, reaching 112 total, then stopped at `discovery.noProgress` after two batches with no unseen links. AI received an authentication/model-access error; 52 candidates remained pending. The console now treats expected AI failure as incomplete analysis after successful capture and surfaces the discovery reason in readable output. Focused console tests passed 8/8. No immediate third browse pass was made against the same no-progress route.
+
 ## Decisions
 
-Share the existing `founders.db` and profile directory when `DatabasePath` points to the Host's DB, so the console and UI see the same candidates. Enforce a ceiling of five new profiles per run and one AI request at a time. Do not automatically send invitations. The console will show captured profiles even when OpenAI returns a rate or quota limit. The requested plain-text key exists only in the local ignored config, never in a commit or SQLite.
+Share the existing `founders.db` and profile directory when `DatabasePath` points to the Host's DB, so the console and UI see the same candidates. Enforce a ceiling of 50 new profiles per run, a bounded daily cap, and one AI request at a time. Do not automatically send invitations. The console will show captured profiles even when OpenAI returns a provider error. The requested plain-text key exists only in the local ignored config, never in a commit or SQLite.
 
 ## Validation
 
@@ -46,9 +50,11 @@ Executed `dotnet restore HomeBusinessAssistant.sln` (pass), `dotnet build HomeBu
 
 For the configuration revision, `dotnet restore HomeBusinessAssistant.sln` passed; final `dotnet build HomeBusinessAssistant.sln -c Release --no-restore` passed with zero warnings/errors; final `dotnet test HomeBusinessAssistant.sln -c Release --no-build` passed 353 tests with three opt-in skips; `dotnet format HomeBusinessAssistant.sln --verify-no-changes --no-restore` passed; focused console tests passed 8/8. `dotnet run ... -- run` stopped before database/browser work because the local key is blank, as intended. A direct `list` against the current-user AppData DB failed with SQLite Error 14 under the restricted workspace; the new regression lists a real migrated temporary SQLite DB successfully. No live browser or provider call was made.
 
+For the 50-profile revision, `dotnet restore HomeBusinessAssistant.sln` passed; `dotnet build HomeBusinessAssistant.sln -c Release --no-restore` passed with zero warnings/errors; `dotnet test HomeBusinessAssistant.sln -c Release --no-build` passed with zero failures and three opt-in skips; `dotnet format HomeBusinessAssistant.sln --verify-no-changes --no-restore` passed; and focused console tests passed 8/8. Two authorized live runs saved one and then twelve additional candidates. The second exited successfully after capture despite an AI provider authentication/model-access error. Discovery stopped at `discovery.noProgress`, not at the configured 50-profile maximum.
+
 ## Recovery and rollback
 
-Each captured profile is committed before AI. If AI fails, saved candidates remain in SQLite. A later `run` can touch and queue candidates again. Private execution-input files are removed in `finally`; stale files can be handled by the existing temporary-file manager. The new project can be removed without changing the database schema.
+Each captured profile is committed before AI. If AI fails, saved candidates remain in SQLite for explicit analysis through the existing candidate controls; a later console `run` can continue capture. Private execution-input files are removed in `finally`; stale files can be handled by the existing temporary-file manager. The new project can be removed without changing the database schema.
 
 ## Remaining risks and follow-up
 

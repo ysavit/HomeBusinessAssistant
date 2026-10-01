@@ -70,12 +70,6 @@ public static class SimpleScoutCommand
             return AgentExitCode.Success;
         }
 
-        if (string.IsNullOrWhiteSpace(configurationSettings.ApiKey))
-        {
-            await error.WriteLineAsync("Set SimpleScout:ApiKey in the local appsettings.json before running Scout.").ConfigureAwait(false);
-            return AgentExitCode.InvalidConfiguration;
-        }
-
         FounderScoutConfiguration defaults = FounderScoutDefaults.CreateConfiguration();
         FounderScoutConfiguration configuration = defaults with
         {
@@ -83,10 +77,16 @@ public static class SimpleScoutCommand
             {
                 MaxNewProfilesPerRun = configurationSettings.MaxCandidatesPerRun,
                 MaxViewedProfilesPerRun = configurationSettings.MaxCandidatesPerRun * 2,
+                MaxNewProfilesPerDay = configurationSettings.MaxCandidatesPerDay,
             },
             Analysis = defaults.Analysis with { BatchSize = configurationSettings.MaxCandidatesPerRun },
             Ai = defaults.Ai with { Deployment = configurationSettings.Model },
-            Persona = defaults.Persona with { AdditionalContext = configurationSettings.FounderContext },
+            Persona = defaults.Persona with
+            {
+                AdditionalContext = string.IsNullOrWhiteSpace(configurationSettings.FounderContext)
+                    ? defaults.Persona.AdditionalContext
+                    : configurationSettings.FounderContext.Trim(),
+            },
         };
 
         var files = new RunTemporaryFileManager(Path.Combine(agentData, "console-runtime"));
@@ -106,6 +106,11 @@ public static class SimpleScoutCommand
             timeProvider.GetUtcNow().AddDays(-7), cancellationToken).ConfigureAwait(false);
         await output.WriteLineAsync($"Saved candidates: {afterSearch.Candidates}. Pending screening: {afterSearch.PendingScreening}.").ConfigureAwait(false);
         if (searchExit != AgentExitCode.Success) return searchExit;
+        if (string.IsNullOrWhiteSpace(configurationSettings.ApiKey))
+        {
+            await output.WriteLineAsync("Capture completed. AI skipped because SimpleScout:ApiKey is empty; saved candidates remain available for later analysis.").ConfigureAwait(false);
+            return AgentExitCode.Success;
+        }
 
         FounderScoutCandidateResultPage touched = await resultsService.QueryCandidatesAsync(
             CandidateQuery(configurationSettings.MaxCandidatesPerRun, searchStartedAtUtc), cancellationToken).ConfigureAwait(false);
@@ -125,8 +130,13 @@ public static class SimpleScoutCommand
                 files, agentData, output, error, timeProvider, cancellationToken).ConfigureAwait(false);
             if (targetedExit != AgentExitCode.Success)
             {
-                await output.WriteLineAsync("Saved profiles remain available in the database. Correct the AI configuration and run again.").ConfigureAwait(false);
-                return targetedExit;
+                FounderScoutDashboard pausedAnalysis = await resultsService.GetDashboardAsync(
+                    timeProvider.GetUtcNow().AddDays(-7), cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync($"Capture completed. AI is incomplete; {pausedAnalysis.PendingAnalysis} candidates remain pending. Future runs can continue browsing and saving profiles.").ConfigureAwait(false);
+                return targetedExit is AgentExitCode.InvalidConfiguration or AgentExitCode.TransientFailure
+                    or AgentExitCode.Throttled or AgentExitCode.PermanentFailure
+                    ? AgentExitCode.Success
+                    : targetedExit;
             }
         }
         if (analyzed == 0)
@@ -204,12 +214,33 @@ public static class SimpleScoutCommand
             {
                 ProgressAgentEvent progress when !string.IsNullOrWhiteSpace(progress.Payload.Message) =>
                     $"[{progress.Payload.Phase ?? "working"}] {progress.Payload.Message}",
+                CheckpointAgentEvent checkpoint => DiscoveryCheckpoint(checkpoint.Payload.State),
                 WarningAgentEvent warning => $"Warning {warning.Payload.Code}: {warning.Payload.Message}",
                 ErrorAgentEvent failure => $"Error {failure.Payload.Code}: {failure.Payload.Message}",
                 SummaryAgentEvent summary => summary.Payload.Text,
                 _ => null,
             };
             if (message is not null) await output.WriteLineAsync(message.AsMemory(), cancellationToken).ConfigureAwait(false);
+        }
+
+        private static string? DiscoveryCheckpoint(JsonElement state)
+        {
+            if (state.ValueKind != JsonValueKind.Object
+                || !state.TryGetProperty("completionReasonCode", out JsonElement reason)
+                || reason.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            string? code = reason.GetString();
+            if (string.IsNullOrWhiteSpace(code) || !code.StartsWith("discovery.", StringComparison.Ordinal)) return null;
+            long viewed = state.TryGetProperty("viewedProfiles", out JsonElement viewedValue)
+                && viewedValue.ValueKind == JsonValueKind.Number
+                && viewedValue.TryGetInt64(out long parsedViewed) ? parsedViewed : 0;
+            long saved = state.TryGetProperty("newSnapshots", out JsonElement savedValue)
+                && savedValue.ValueKind == JsonValueKind.Number
+                && savedValue.TryGetInt64(out long parsedSaved) ? parsedSaved : 0;
+            return $"[browser-discovery] {code}: viewed {viewed}, saved {saved}.";
         }
     }
 }

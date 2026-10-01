@@ -10,7 +10,8 @@ public sealed record SimpleScoutSettings(
     int DelaySeconds,
     string Model,
     string? ApiKey,
-    string? FounderContext)
+    string? FounderContext,
+    int MaxCandidatesPerDay = 150)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -46,10 +47,11 @@ public sealed record SimpleScoutSettings(
             {
                 return (null, "SimpleScout:DatabasePath must be an absolute path to a .db file.");
             }
-            if (parsed.MaxCandidatesPerRun is < 1 or > 5 || parsed.ListLimit is < 1 or > 100
-                || parsed.DelaySeconds is < 1 or > 60)
+            if (parsed.MaxCandidatesPerRun is < 1 or > 50 || parsed.ListLimit is < 1 or > 100
+                || parsed.DelaySeconds is < 1 or > 60 || parsed.MaxCandidatesPerDay is < 1 or > 500
+                || parsed.MaxCandidatesPerDay < parsed.MaxCandidatesPerRun)
             {
-                return (null, "SimpleScout limits must be: MaxCandidatesPerRun 1..5, ListLimit 1..100, DelaySeconds 1..60.");
+                return (null, "SimpleScout limits must be: MaxCandidatesPerRun 1..50, MaxCandidatesPerDay from the run limit to 500, ListLimit 1..100, DelaySeconds 1..60.");
             }
             if (string.IsNullOrWhiteSpace(parsed.Model) || parsed.Model.Length > 128
                 || !parsed.Model.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))

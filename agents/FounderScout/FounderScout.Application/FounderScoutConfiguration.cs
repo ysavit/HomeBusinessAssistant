@@ -635,6 +635,9 @@ public sealed class FounderScoutDefaults : IAgentDefaultConfigurationProvider
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>The project owner's stable co-founder goal and evaluation brief for new configurations.</summary>
+    public const string DefaultFounderContext = "I am looking to become a CTO/technical co-founder. I want to join a strong co-founder with a strong idea as an equal technical partner, rather than serve as an unpaid developer. Use this YC co-founder evaluation framework for every deep evaluation. Include an executive verdict and recommendation; a weighted score out of 100; founder, idea, traction, market, moat, go-to-market, feasibility, and CTO-fit category scores; a plain-English product explanation; reasons to join and reasons to pass; expected CTO workload and risk of becoming an unpaid developer; red flags, assumptions, and missing evidence; prioritized clarification questions; a personalized YC introduction message; and a direct conclusion: worth joining, exploratory call only, monitor, or pass. Ground every judgment in captured profile evidence, state when evidence is missing, and never invent facts.";
+
     /// <summary>The stable Founder Scout identifier.</summary>
     public static AgentId AgentId { get; } = AgentId.Parse("founder-scout");
 
@@ -665,7 +668,7 @@ public sealed class FounderScoutDefaults : IAgentDefaultConfigurationProvider
             ["Complementary business leadership", "Customer access or distribution", "Founder-level commitment"],
             "Direct, thoughtful, founder-to-founder",
             ["Do not imply a commitment to join.", "Do not promise investment or delivery.", "Do not mention automated scoring."],
-            AdditionalContext: null),
+            AdditionalContext: DefaultFounderContext),
         StartupSchoolSourceOptions.Default with
         {
             EntryUrl = "https://www.startupschool.org/cofounder-matching/candidate/next",
