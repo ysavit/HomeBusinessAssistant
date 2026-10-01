@@ -13,8 +13,17 @@ public sealed partial class FounderScoutRepository
         string workerId,
         TimeSpan leaseDuration,
         CancellationToken cancellationToken = default)
+        => await ClaimProcessingAsync(null, workerId, leaseDuration, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async ValueTask<FounderScoutProcessingClaim?> ClaimProcessingSnapshotAsync(
+        Guid snapshotId, string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken = default)
+        => await ClaimProcessingAsync(snapshotId, workerId, leaseDuration, cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask<FounderScoutProcessingClaim?> ClaimProcessingAsync(
+        Guid? requestedSnapshotId, string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(workerId) || workerId.Length > 128 || leaseDuration < TimeSpan.FromSeconds(10) || leaseDuration > TimeSpan.FromHours(24))
+        if (requestedSnapshotId == Guid.Empty || string.IsNullOrWhiteSpace(workerId) || workerId.Length > 128 || leaseDuration < TimeSpan.FromSeconds(10) || leaseDuration > TimeSpan.FromHours(24))
             throw new ArgumentException("The processing worker or lease duration is invalid.", nameof(workerId));
         DateTimeOffset nowUtc = timeProvider.GetUtcNow().ToUniversalTime();
         DateTimeOffset expiresAtUtc = nowUtc.Add(leaseDuration);
@@ -23,7 +32,8 @@ public sealed partial class FounderScoutRepository
             await using FounderScoutDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             Guid? snapshotId = await context.Set<ProfileSnapshotEntity>().AsNoTracking()
-                .Where(item => item.Status == ProfileSnapshotStatus.Captured.ToString()
+                .Where(item => (!requestedSnapshotId.HasValue || item.Id == requestedSnapshotId.Value)
+                    && item.Status == ProfileSnapshotStatus.Captured.ToString()
                     && (!item.ProcessingClaimExpiresAtUtc.HasValue || item.ProcessingClaimExpiresAtUtc <= nowUtc)
                     && !context.Set<ProfileSnapshotEntity>().Any(other => other.CandidateId == item.CandidateId
                         && other.Id != item.Id

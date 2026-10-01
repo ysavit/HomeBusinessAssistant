@@ -35,6 +35,102 @@ internal sealed class FounderScoutResultsTests
     }
 
     [Test]
+    public async Task NavigationPagesAreExcludedFromCandidateResultsAndDashboardCounts()
+    {
+        await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();
+        await SeedCandidatesAsync(fixture.Database.ContextFactory, 3);
+        await using (FounderScoutDbContext context = await fixture.Database.ContextFactory.CreateDbContextAsync())
+        {
+            _ = await context.Database.ExecuteSqlRawAsync("""
+                UPDATE Candidates
+                SET CurrentSourceProfileKey = 'founders-you-may-know', DisplayName = 'Founders You May Know'
+                WHERE DisplayName = 'Candidate 00001';
+                UPDATE Candidates
+                SET CurrentSourceProfileKey = 'saved-profiles', DisplayName = 'Saved Profiles'
+                WHERE DisplayName = 'Candidate 00002';
+                """);
+        }
+        var service = new FounderScoutResultsService(fixture.Database.ContextFactory, fixture.Root, TimeProvider.System);
+
+        FounderScoutCandidateResultPage page = await service.QueryCandidatesAsync(FounderScoutUiQuery(offset: 0, pageSize: 50));
+        FounderScoutDashboard dashboard = await service.GetDashboardAsync(DateTimeOffset.UtcNow.AddDays(-30));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(page.TotalCount, Is.EqualTo(1));
+            Assert.That(page.Items.Select(item => item.DisplayName), Is.EqualTo(["Candidate 00003"]));
+            Assert.That(dashboard.Candidates, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task ExplicitAnalysisQueueIncludesScreenedUnanalyzedCandidatesOnly()
+    {
+        await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        Guid queueCandidateId = Guid.NewGuid();
+        Guid queueSnapshotId = Guid.NewGuid();
+        Guid pendingCandidateId = Guid.NewGuid();
+        Guid pendingSnapshotId = Guid.NewGuid();
+        Guid unscreenedCandidateId = Guid.NewGuid();
+        Guid unscreenedSnapshotId = Guid.NewGuid();
+        await using (FounderScoutDbContext context = await fixture.Database.ContextFactory.CreateDbContextAsync())
+        {
+            await AddQueueCandidateAsync(context, queueCandidateId, queueSnapshotId, CandidateStatus.Monitor, ProfileSnapshotStatus.Parsed, "Queue me", now, screened: true);
+            await AddQueueCandidateAsync(context, pendingCandidateId, pendingSnapshotId, CandidateStatus.PendingAnalysis, ProfileSnapshotStatus.PendingAnalysis, "Already pending", now.AddMinutes(-1), screened: true);
+            await AddQueueCandidateAsync(context, unscreenedCandidateId, unscreenedSnapshotId, CandidateStatus.ManualReview, ProfileSnapshotStatus.Parsed, "No screening", now.AddMinutes(-2), screened: false);
+        }
+        var service = new FounderScoutResultsService(fixture.Database.ContextFactory, fixture.Root, TimeProvider.System);
+
+        FounderScoutAnalysisQueueResult result = await service.QueueUnanalyzedForAnalysisAsync(20, "test-user");
+        FounderScoutCandidateDetail queued = await service.GetCandidateAsync(queueCandidateId)
+            ?? throw new InvalidOperationException("Expected queued candidate.");
+        FounderScoutCandidateDetail unscreened = await service.GetCandidateAsync(unscreenedCandidateId)
+            ?? throw new InvalidOperationException("Expected unscreened candidate.");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Queued, Is.EqualTo(1));
+            Assert.That(result.AlreadyPending, Is.EqualTo(1));
+            Assert.That(result.Eligible, Is.EqualTo(1));
+            Assert.That(queued.Candidate.Status, Is.EqualTo(CandidateStatus.PendingAnalysis));
+            Assert.That(queued.Snapshots.Single().Snapshot.Status, Is.EqualTo(ProfileSnapshotStatus.PendingAnalysis));
+            Assert.That(queued.Timeline.Any(action => action.ActionType == CandidateActionType.StateTransitioned), Is.True);
+            Assert.That(unscreened.Candidate.Status, Is.EqualTo(CandidateStatus.ManualReview));
+        });
+    }
+
+    [Test]
+    public async Task CandidateAnalysisQueueTargetsOnlySelectedScreenedRow()
+    {
+        await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        Guid selectedId = Guid.NewGuid();
+        Guid otherId = Guid.NewGuid();
+        Guid unscreenedId = Guid.NewGuid();
+        await using (FounderScoutDbContext context = await fixture.Database.ContextFactory.CreateDbContextAsync())
+        {
+            await AddQueueCandidateAsync(context, selectedId, Guid.NewGuid(), CandidateStatus.Monitor, ProfileSnapshotStatus.Parsed, "Selected", now, screened: true);
+            await AddQueueCandidateAsync(context, otherId, Guid.NewGuid(), CandidateStatus.Monitor, ProfileSnapshotStatus.Parsed, "Other", now, screened: true);
+            await AddQueueCandidateAsync(context, unscreenedId, Guid.NewGuid(), CandidateStatus.Monitor, ProfileSnapshotStatus.Captured, "Unscreened", now, screened: false);
+        }
+        var service = new FounderScoutResultsService(fixture.Database.ContextFactory, fixture.Root, TimeProvider.System);
+
+        bool queued = await service.QueueCandidateForAnalysisAsync(selectedId, "test-user");
+        bool rejected = await service.QueueCandidateForAnalysisAsync(unscreenedId, "test-user");
+        FounderScoutCandidateDetail selected = (await service.GetCandidateAsync(selectedId))!;
+        FounderScoutCandidateDetail other = (await service.GetCandidateAsync(otherId))!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(queued, Is.True);
+            Assert.That(rejected, Is.False);
+            Assert.That(selected.Candidate.Status, Is.EqualTo(CandidateStatus.PendingAnalysis));
+            Assert.That(other.Candidate.Status, Is.EqualTo(CandidateStatus.Monitor));
+        });
+    }
+
+    [Test]
     public async Task AllReportsShareCanonicalOrderAndEncodeHostileContent()
     {
         await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();
@@ -188,6 +284,64 @@ internal sealed class FounderScoutResultsTests
             FROM sequence;
             """;
         _ = await context.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    private static async Task AddQueueCandidateAsync(
+        FounderScoutDbContext context,
+        Guid candidateId,
+        Guid snapshotId,
+        CandidateStatus status,
+        ProfileSnapshotStatus snapshotStatus,
+        string displayName,
+        DateTimeOffset now,
+        bool screened)
+    {
+        string sourceKey = candidateId.ToString("N");
+        string sourceUrl = $"https://example.invalid/profile/{sourceKey}";
+        const string accountId = "fixture-account";
+        const string segmentId = "fixture-segment";
+        const string emptyObject = "{}";
+        const string emptyArray = "[]";
+        const string ruleset = "test-rules-1";
+        _ = await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO Candidates (
+                Id, CurrentSourceProfileKey, CanonicalSourceUrl, DisplayName,
+                TechnicalStatus, CommitmentStatus, IdeaCommitmentStatus, Status,
+                FirstSeenAtUtc, LastSeenAtUtc, AnalysisAttemptCount, CreatedAtUtc, UpdatedAtUtc, Version)
+            VALUES (
+                {candidateId}, {sourceKey}, {sourceUrl}, {displayName},
+                {TechnicalProfileStatus.Unknown.ToString()}, {FounderCommitmentStatus.Unknown.ToString()},
+                {IdeaCommitmentStatus.Unknown.ToString()}, {status.ToString()},
+                {now}, {now}, 0, {now}, {now}, 1);
+            """);
+        _ = await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ProfileSnapshots (
+                Id, CandidateId, SourceAccountId, SourceSegmentId, SourceProfileKey,
+                CanonicalSourceUrl, ContentHash, ParserVersion, SourceAdapterVersion,
+                CapturedAtUtc, RawArtifactRelativePath, NormalizedProfileJson, RawContentHash,
+                NormalizedProfileHash, EvaluatorInputHash, EvidenceJson, RedactionJson,
+                ExtractionCompleteness, ExtractionConfidence, Status, ProcessingAttemptCount, CreatedAtUtc)
+            VALUES (
+                {snapshotId}, {candidateId}, {accountId}, {segmentId}, {sourceKey},
+                {sourceUrl}, {new string('a', 64)}, {DeterministicFounderProfileParser.CurrentVersion},
+                {StartupSchoolSourceOptions.CurrentAdapterVersion}, {now}, {$"snapshots/{snapshotId:N}.json"},
+                {emptyObject}, {new string('b', 64)}, {new string('c', 64)}, {new string('d', 64)},
+                {emptyArray}, {emptyObject}, {0.5m}, {0.5m}, {snapshotStatus.ToString()}, 0, {now});
+            """);
+        _ = await context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE Candidates SET CurrentSnapshotId = {snapshotId} WHERE Id = {candidateId};");
+        if (screened)
+        {
+            _ = await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO ScreeningDecisions (
+                    Id, CandidateId, SnapshotId, RulesetVersion, Outcome, Score,
+                    ReasonCodesJson, EvidenceJson, MissingEvidenceJson, EvaluatorInputJson,
+                    EvaluatorInputHash, IsManualOverride, CreatedAtUtc)
+                VALUES (
+                    {Guid.NewGuid()}, {candidateId}, {snapshotId}, {ruleset}, {ScreeningOutcome.Monitor.ToString()}, {50m},
+                    {emptyArray}, {emptyArray}, {emptyArray}, {emptyObject}, {new string('d', 64)}, {false}, {now});
+                """);
+        }
     }
 
     private static async Task<(Candidate Candidate, InvitationDraft Draft, ProfileSnapshot Snapshot)> SeedReviewCandidateAsync(

@@ -35,6 +35,14 @@
         const timer = window.setInterval(refresh, 5000);
     }
 
+    const autoRefresh = document.querySelector('[data-auto-refresh-seconds]');
+    if (autoRefresh) {
+        const seconds = Number.parseInt(autoRefresh.getAttribute('data-auto-refresh-seconds') || '', 10);
+        if (Number.isFinite(seconds) && seconds >= 1 && seconds <= 60) {
+            window.setTimeout(() => window.location.reload(), seconds * 1000);
+        }
+    }
+
     for (const button of document.querySelectorAll('[data-copy-source]')) {
         button.addEventListener('click', async () => {
             const source = document.getElementById(button.getAttribute('data-copy-source'));

@@ -15,12 +15,12 @@ internal sealed class Stage13BrowserSmokeTests
     private static readonly string[] Stage16DesktopPaths =
     [
         "/", "/Agents", "/Schedules", "/Runs", "/Audit", "/WakeRemote", "/FounderScout",
-        "/FounderScout/Candidates", "/FounderScout/Queue", "/FounderScout/Operations", "/Settings", "/About",
+        "/FounderScout/Candidates", "/FounderScout/Settings", "/FounderScout/Queue", "/FounderScout/Operations", "/Settings", "/About",
     ];
 
     private static readonly string[] Stage16NarrowPaths =
     [
-        "/", "/FounderScout/Candidates", "/FounderScout/Queue", "/FounderScout/Operations", "/Settings",
+        "/", "/FounderScout/Candidates", "/FounderScout/Settings", "/FounderScout/Queue", "/FounderScout/Operations", "/Settings",
     ];
 
     [Test]
@@ -130,11 +130,20 @@ internal sealed class Stage13BrowserSmokeTests
             }
 
             await AssertRenderedPageAsync(page, url, "/FounderScout/Candidates");
-            string? candidatePath = await page.Locator("a[href*='/FounderScout/Candidates/']").First.GetAttributeAsync("href");
-            if (!string.IsNullOrWhiteSpace(candidatePath))
+            int candidateRows = await page.Locator(".candidate-table tbody tr").CountAsync();
+            int detailLinks = await page.Locator(".candidate-table a[aria-label^='View details']").CountAsync();
+            int nextLinks = await page.GetByRole(AriaRole.Link, new() { Name = "Next" }).CountAsync();
+            Assert.Multiple(() =>
             {
-                await AssertRenderedPageAsync(page, url, candidatePath);
-            }
+                Assert.That(candidateRows, Is.EqualTo(10));
+                Assert.That(detailLinks, Is.EqualTo(10));
+                Assert.That(nextLinks, Is.EqualTo(1));
+            });
+            await page.Locator(".candidate-table a[aria-label^='View details']").First.ClickAsync();
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            Assert.That(await page.Locator("body").InnerTextAsync(), Does.Contain("AI evaluation complete"));
+            await AssertRenderedPageAsync(page, url, "/FounderScout/Candidates?pageNumber=2");
+            Assert.That(await page.Locator(".candidate-table tbody tr").CountAsync(), Is.EqualTo(2));
 
             await page.SetViewportSizeAsync(390, 844);
             foreach (string path in Stage16NarrowPaths)
@@ -176,7 +185,10 @@ internal sealed class Stage13BrowserSmokeTests
         Assert.That(await page.Locator("main").CountAsync(), Is.EqualTo(1), path);
         Assert.That(await page.Locator("a.skip-link").CountAsync(), Is.EqualTo(1), path);
         bool fitsViewport = await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth + 1");
-        Assert.That(fitsViewport, Is.True, $"Horizontal overflow at {path}");
+        string overflow = fitsViewport
+            ? string.Empty
+            : await page.EvaluateAsync<string>("() => [...document.querySelectorAll('body *')].filter(element => { const box = element.getBoundingClientRect(); return box.right > window.innerWidth + 1 || box.left < -1; }).slice(0, 8).map(element => `${element.tagName.toLowerCase()}.${element.className}: ${Math.round(element.getBoundingClientRect().left)}..${Math.round(element.getBoundingClientRect().right)}`).join(' | ')");
+        Assert.That(fitsViewport, Is.True, $"Horizontal overflow at {path}: {overflow}");
         await page.Keyboard.PressAsync("Tab");
         bool focusVisible = await page.EvaluateAsync<bool>("() => document.activeElement !== document.body && document.activeElement?.getBoundingClientRect().width > 0");
         Assert.That(focusVisible, Is.True, $"Keyboard focus was not visible at {path}");
@@ -209,7 +221,7 @@ internal sealed class Stage13BrowserSmokeTests
             "{\"commitment\":\"full-time\",\"technical\":true}", account.Id, now.AddHours(-2), 84, 11, 29, 0, 0, null, now.AddMonths(-2), now, 1));
 
         var candidates = new List<Candidate>();
-        string[] names = ["Maya Chen", "Jon Bell", "Priya Shah", "Lucas Martin", "Sofia Reyes", "Amir Patel", "Elena Kovacs", "Theo Brooks"];
+        string[] names = ["Maya Chen", "Jon Bell", "Priya Shah", "Lucas Martin", "Sofia Reyes", "Amir Patel", "Elena Kovacs", "Theo Brooks", "Nora Kim", "Sam Okafor", "Iris Laurent", "Mateo Silva"];
         for (var index = 0; index < names.Length; index++)
         {
             candidates.Add(await SeedCandidateAsync(repository, composition.DataDirectory, account.Id, names[index], index, now));

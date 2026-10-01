@@ -54,7 +54,7 @@ internal sealed class Stage18OnboardingBrowserSmokeTests
 
     [Test]
     [Category("Stage18RenderedUi")]
-    public async Task FreshOnboardingRendersAndDefersResumesAtDesktopAndNarrowWidths()
+    public async Task SimpleModeSkipsAutomaticEntryButManualOnboardingStillRendersResponsively()
     {
         string root = Path.Combine(Path.GetTempPath(), $"hba-stage18-rendered-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path.Combine(root, "agents"));
@@ -92,20 +92,17 @@ internal sealed class Stage18OnboardingBrowserSmokeTests
 
             IResponse? entry = await page.GotoAsync(url + "/", new() { WaitUntil = WaitUntilState.NetworkIdle });
             Assert.That(entry?.Status, Is.EqualTo(200));
-            Assert.That(page.Url, Does.Contain("/Onboarding"));
+            Assert.That(page.Url, Is.EqualTo(url + "/"));
+            Assert.That(await page.GetByRole(AriaRole.Link, new() { Name = "Open Founder Scout" }).CountAsync(), Is.EqualTo(1));
+            await page.GotoAsync(url + "/Onboarding", new() { WaitUntil = WaitUntilState.NetworkIdle });
             Assert.That(await page.Locator(".onboarding-steps li").CountAsync(), Is.EqualTo(5));
             Assert.That(await page.Locator(".readiness-card").CountAsync(), Is.EqualTo(7));
             await AssertFitsViewportAsync(page);
 
             await page.GetByRole(AriaRole.Button, new() { Name = "Set up later" }).ClickAsync();
             await page.WaitForURLAsync(url + "/");
-            Assert.That(await page.GetByText("Setup is saved for later.").CountAsync(), Is.EqualTo(1));
-            string? resumeHref = await page.GetByRole(AriaRole.Link, new() { Name = "Resume setup" }).GetAttributeAsync("href");
-            await page.GetByRole(AriaRole.Button, new() { Name = "Dismiss for this session" }).ClickAsync();
-            await page.WaitForURLAsync(url + "/");
             Assert.That(await page.GetByText("Setup is saved for later.").CountAsync(), Is.Zero);
-            Assert.That(resumeHref, Is.Not.Null.And.Not.Empty);
-            await page.GotoAsync(url + resumeHref, new() { WaitUntil = WaitUntilState.NetworkIdle });
+            await page.GotoAsync(url + "/Onboarding", new() { WaitUntil = WaitUntilState.NetworkIdle });
             await page.GetByRole(AriaRole.Button, new() { Name = "Resume setup" }).ClickAsync();
             await page.WaitForURLAsync(value => value.Contains("/Onboarding", StringComparison.Ordinal));
 

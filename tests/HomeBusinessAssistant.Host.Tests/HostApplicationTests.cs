@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using HomeBusinessAssistant.Application.Desktop;
 using HomeBusinessAssistant.Application.Onboarding;
 using HomeBusinessAssistant.Domain.Agents;
@@ -11,6 +12,28 @@ namespace HomeBusinessAssistant.Host.Tests;
 
 internal sealed class HostApplicationTests
 {
+    [Test]
+    public void DirectHostBuildOutputIncludesStaticAssets()
+    {
+        string configuration = typeof(HostApplication).Assembly
+            .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration
+            ?? throw new InvalidOperationException("The Host build configuration is unavailable.");
+        string outputRoot = Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "HomeBusinessAssistant.Host",
+            "bin",
+            configuration,
+            "net10.0-windows",
+            "wwwroot");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Path.Combine(outputRoot, "css", "site.css"), Does.Exist);
+            Assert.That(Path.Combine(outputRoot, "js", "site.js"), Does.Exist);
+        });
+    }
+
     [Test]
     public async Task HealthEndpointsAndDashboardAreAvailableOnlyOnIpv4Loopback()
     {
@@ -37,11 +60,11 @@ internal sealed class HostApplicationTests
             Assert.That(ready.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(dashboard.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(anonymousHealth.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            Assert.That(anonymousDashboard.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            Assert.That(anonymousDashboard.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(dashboardBody, Does.Contain("No installed agent manifests were found"));
             Assert.That(dashboardBody, Does.Contain("href=\"/Agents\""));
             Assert.That(dashboardBody, Does.Contain("href=\"/WakeRemote\""));
-            Assert.That(dashboardBody, Does.Contain("/health/ready"));
+            Assert.That(dashboardBody, Does.Not.Contain("href=\"/health/ready\""));
         });
     }
 
@@ -116,7 +139,7 @@ internal sealed class HostApplicationTests
     }
 
     [Test]
-    public async Task FreshDashboardRedirectsWhileOnboardingHealthAboutAndDeferredDashboardRemainReachable()
+    public async Task SimpleModeSkipsOnboardingEntryWhileOnboardingHealthAndAboutRemainReachable()
     {
         int port = GetAvailablePort();
         string url = $"http://127.0.0.1:{port}";
@@ -156,8 +179,8 @@ internal sealed class HostApplicationTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(dashboard.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
-            Assert.That(dashboard.Headers.Location?.OriginalString, Does.StartWith("/Onboarding"));
+            Assert.That(dashboard.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(dashboard.Headers.Location, Is.Null);
             Assert.That(onboardingPage.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(onboardingBody, Does.Contain("Make sure this workstation is ready"));
             Assert.That(onboardingBody, Does.Not.Contain("<script>stage18-hostile</script>"));
@@ -168,11 +191,11 @@ internal sealed class HostApplicationTests
             Assert.That(about.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(health.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(staticAsset.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            Assert.That(anonymousOnboarding.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            Assert.That(anonymousOnboarding.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(missingAntiforgery.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
             Assert.That(deferredDashboard.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            Assert.That(deferredBody, Does.Contain("Setup is saved for later"));
-            Assert.That(deferredBody, Does.Contain("Dismiss for this session"));
+            Assert.That(deferredBody, Does.Not.Contain("Setup is saved for later"));
+            Assert.That(deferredBody, Does.Not.Contain("Dismiss for this session"));
         });
     }
 

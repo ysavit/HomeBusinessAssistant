@@ -1,3 +1,4 @@
+@using global::FounderScout.Application
 <!doctype html>
 <html lang="en">
 <head>
@@ -12,16 +13,24 @@
     <header class="site-header">
         <a class="brand" asp-page="/Index" aria-label="Home Business Assistant dashboard"><span class="brand-mark" aria-hidden="true">H</span><span>Home Business Assistant</span></a>
         <nav aria-label="Primary navigation">
-            <a asp-page="/Index" aria-current="@(Context.Request.Path == "/" ? "page" : null)">Dashboard</a>
-            <a asp-page="/Agents/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Agents") ? "page" : null)">Agents</a>
-            <a asp-page="/Schedules/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Schedules") ? "page" : null)">Schedules</a>
-            <a asp-page="/Runs/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Runs") ? "page" : null)">Runs</a>
-            <a asp-page="/Audit/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Audit") ? "page" : null)">Audit</a>
-            <a asp-page="/Attention/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Attention") ? "page" : null)">Attention</a>
-            <a asp-page="/FounderScout/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/FounderScout") ? "page" : null)">Founder Scout</a>
-            <a asp-page="/WakeRemote/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/WakeRemote") ? "page" : null)">Wake &amp; Remote</a>
-            <a asp-page="/Settings/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Settings") ? "page" : null)">Settings</a>
-            <a asp-page="/About" aria-current="@(Context.Request.Path.StartsWithSegments("/About") ? "page" : null)">About</a>
+            @if (FounderScoutSimpleMode.Enabled)
+            {
+                <a asp-page="/Index" aria-current="@(Context.Request.Path == "/" ? "page" : null)">Dashboard</a>
+                <a asp-page="/FounderScout/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/FounderScout") ? "page" : null)">Founder Scout</a>
+            }
+            else
+            {
+                <a asp-page="/Index" aria-current="@(Context.Request.Path == "/" ? "page" : null)">Dashboard</a>
+                <a asp-page="/Agents/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Agents") ? "page" : null)">Agents</a>
+                <a asp-page="/Schedules/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Schedules") ? "page" : null)">Schedules</a>
+                <a asp-page="/Runs/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Runs") ? "page" : null)">Runs</a>
+                <a asp-page="/Audit/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Audit") ? "page" : null)">Audit</a>
+                <a asp-page="/Attention/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Attention") ? "page" : null)">Attention</a>
+                <a asp-page="/FounderScout/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/FounderScout") ? "page" : null)">Founder Scout</a>
+                <a asp-page="/WakeRemote/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/WakeRemote") ? "page" : null)">Wake &amp; Remote</a>
+                <a asp-page="/Settings/Index" aria-current="@(Context.Request.Path.StartsWithSegments("/Settings") ? "page" : null)">Settings</a>
+                <a asp-page="/About" aria-current="@(Context.Request.Path.StartsWithSegments("/About") ? "page" : null)">About</a>
+            }
         </nav>
     </header>
     <main id="main-content" class="page-shell">
@@ -31,7 +40,7 @@
         }
         @RenderBody()
     </main>
-    <footer><span>Local-only control plane</span><a href="/health/ready">Readiness</a><a href="/health/live">Liveness</a></footer>
+    <footer><span>Local-only control plane</span>@if (!FounderScoutSimpleMode.Enabled) { <a href="/health/ready">Readiness</a><a href="/health/live">Liveness</a> }</footer>
     <script src="~/js/site.js" asp-append-version="true" defer></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

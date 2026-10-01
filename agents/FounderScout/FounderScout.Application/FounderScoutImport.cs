@@ -94,7 +94,8 @@ public sealed record FounderScoutCaptureCommitResult(
     bool CandidateCreated,
     bool SnapshotCreated,
     bool RawArtifactCreated,
-    string ContentHash);
+    string ContentHash,
+    Guid SnapshotId);
 
 /// <summary>Commits one capture before downstream analysis using Stage 09 identities.</summary>
 public sealed class FounderScoutCaptureCommitService(
@@ -185,7 +186,7 @@ public sealed class FounderScoutCaptureCommitService(
             ProfileSnapshotStatus.Captured,
             request.RunId,
             request.CorrelationId), cancellationToken).ConfigureAwait(false);
-        return new(resolved.Candidate.Id, resolved.Created, snapshot.Created, artifact.Created, contentHash);
+        return new(resolved.Candidate.Id, resolved.Created, snapshot.Created, artifact.Created, contentHash, snapshot.Snapshot.Id);
     }
 
     private static string CalculateContentHash(FounderScoutCaptureEnvelope capture)

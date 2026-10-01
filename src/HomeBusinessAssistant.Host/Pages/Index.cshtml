@@ -1,5 +1,6 @@
 @page
 @model HomeBusinessAssistant.Host.Pages.IndexModel
+@using global::FounderScout.Application
 @using HomeBusinessAssistant.Domain.Agents
 @{
     ViewData["Title"] = "Dashboard";
@@ -10,7 +11,7 @@
 
 <header class="page-header">
     <div><p class="eyebrow">Local control plane</p><h1>Good work starts with a quiet system.</h1><p>Schedule, supervise, and review your local agents from this Windows workstation.</p></div>
-    <div class="page-actions"><a class="button-link primary" asp-page="/Agents/Index">Run agent</a><form method="post" asp-page-handler="Reconcile"><button class="secondary">Reconcile now</button></form><a class="button-link ghost" asp-page="/Schedules/Edit">Create schedule</a></div>
+    <div class="page-actions">@if (FounderScoutSimpleMode.Enabled) { <a class="button-link primary" asp-page="/FounderScout/Index">Open Founder Scout</a> } else { <a class="button-link primary" asp-page="/Agents/Index">Run agent</a> }<form method="post" asp-page-handler="Reconcile"><button class="secondary">Reconcile now</button></form><a class="button-link ghost" asp-page="/Schedules/Edit">Create schedule</a></div>
 </header>
 
 @if (Model.Onboarding?.ShowResumeReminder == true)

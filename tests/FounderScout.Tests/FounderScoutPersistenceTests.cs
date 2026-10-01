@@ -239,6 +239,28 @@ internal sealed class FounderScoutPersistenceTests
     }
 
     [Test]
+    public async Task TargetedAnalysisClaimDoesNotConsumeOtherPendingCandidate()
+    {
+        await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();
+        FounderScoutRepository repository = fixture.CreateRepository();
+        ResolveCandidateResult first = await ResolveAsync(repository, "target-first", "First");
+        ResolveCandidateResult second = await ResolveAsync(repository, "target-second", "Second");
+        _ = await AddSnapshotAsync(repository, first.Candidate.Id, "target-first", 'a');
+        _ = await AddSnapshotAsync(repository, second.Candidate.Id, "target-second", 'b');
+        foreach (Guid id in new[] { first.Candidate.Id, second.Candidate.Id })
+            _ = await repository.TransitionAsync(new(id, CandidateStatus.PendingAnalysis, "test.queue", "test", null, "{}", null, null, Guid.NewGuid(), "target-test"));
+
+        FounderScoutAnalysisClaim? target = await repository.ClaimCandidateAnalysisAsync(second.Candidate.Id, "target-worker", TimeSpan.FromMinutes(1));
+        FounderScoutAnalysisClaim? remaining = await repository.ClaimPendingAnalysisAsync("other-worker", TimeSpan.FromMinutes(1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(target?.Candidate.Id, Is.EqualTo(second.Candidate.Id));
+            Assert.That(remaining?.Candidate.Id, Is.EqualTo(first.Candidate.Id));
+        });
+    }
+
+    [Test]
     public async Task EvaluationInvitationAndWindowTransitionsRequireExplicitReviewAndManualSend()
     {
         await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();

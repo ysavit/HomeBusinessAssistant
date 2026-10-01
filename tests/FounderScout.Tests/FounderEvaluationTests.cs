@@ -322,6 +322,25 @@ internal sealed class FounderEvaluationTests
     }
 
     [Test]
+    public void ExplicitLocalFounderContextIsIncludedInTheProviderPayload()
+    {
+        FounderEvaluationRequest baseline = CreateRequest();
+        FounderEvaluationRequest request = baseline with
+        {
+            Persona = baseline.Persona with
+            {
+                AdditionalContext = "Prefer complementary go-to-market leadership; keep uncertainty explicit.",
+            },
+        };
+
+        using JsonDocument payload = JsonDocument.Parse(request.CreateUserPayload());
+
+        Assert.That(
+            payload.RootElement.GetProperty("persona").GetProperty("additionalContext").GetString(),
+            Is.EqualTo("Prefer complementary go-to-market leadership; keep uncertainty explicit."));
+    }
+
+    [Test]
     [Explicit("Opt-in live provider test. Set HBA_FOUNDER_SCOUT_LIVE_API_KEY, HBA_FOUNDER_SCOUT_LIVE_MODEL, and optionally HBA_FOUNDER_SCOUT_LIVE_ENDPOINT.")]
     public async Task SyntheticLiveProviderEvaluationIsOptIn()
     {

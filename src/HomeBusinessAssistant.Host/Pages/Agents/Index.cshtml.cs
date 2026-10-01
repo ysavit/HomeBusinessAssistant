@@ -1,3 +1,4 @@
+using FounderScout.Application;
 using HomeBusinessAssistant.Application.Management;
 using HomeBusinessAssistant.Application.Onboarding;
 using HomeBusinessAssistant.Domain.Agents;
@@ -41,6 +42,12 @@ public sealed class IndexModel(HostManagementComposition management) : PageModel
             return NotFound();
         }
 
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            TempData["FlashMessage"] = "Founder Scout is enabled automatically in simple mode.";
+            return RedirectToPage();
+        }
+
         bool changed = await management.Commands.SetAgentEnabledAsync(agentId, enabled, cancellationToken).ConfigureAwait(false);
         TempData["FlashMessage"] = changed
             ? $"{id} was {(enabled ? "enabled" : "disabled")}. Active runs were not cancelled."
@@ -54,6 +61,11 @@ public sealed class IndexModel(HostManagementComposition management) : PageModel
         if (management.AgentOnboarding is null || !AgentId.TryParse(id, out AgentId agentId))
         {
             return NotFound();
+        }
+
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            return RedirectToPage("/Agents/Configuration", new { id });
         }
 
         try

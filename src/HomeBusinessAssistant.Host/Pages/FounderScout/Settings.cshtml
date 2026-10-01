@@ -1,0 +1,81 @@
+@page
+@model HomeBusinessAssistant.Host.Pages.FounderScout.SettingsModel
+@{
+    ViewData["Title"] = "Founder Scout settings";
+}
+
+<header class="page-header">
+    <div>
+        <p class="eyebrow">Founder Scout · local AI setup</p>
+        <h1>AI settings</h1>
+        <p>Use a standard OpenAI Platform API key. Azure AI Foundry is not required for this simple setup.</p>
+    </div>
+</header>
+
+<partial name="_Tabs" />
+
+<section class="facts-strip" aria-label="Founder Scout AI readiness">
+    <div class="fact"><span>Analysis</span><strong>@(Model.Form.AnalysisEnabled ? "Enabled" : "Disabled")</strong></div>
+    <div class="fact"><span>Provider</span><strong>OpenAI</strong></div>
+    <div class="fact"><span>API key</span><strong>@(Model.ApiKeyConfigured ? "Configured" : "Missing")</strong></div>
+    <div class="fact"><span>Readiness</span><strong>@(Model.AnalysisReady ? "Ready" : "Needs setup")</strong></div>
+</section>
+<section class="panel" aria-labelledby="openai-settings-heading">
+    <div class="panel-heading">
+        <div>
+            <h2 id="openai-settings-heading">OpenAI and founder context</h2>
+            <p class="supporting">These non-secret values are saved in an immutable local configuration revision.</p>
+        </div>
+        <span class="pill positive">Analysis enabled</span>
+    </div>
+    <form method="post" asp-page-handler="Save" class="stack">
+        <div asp-validation-summary="ModelOnly"></div>
+        <input asp-for="Form.ExpectedRevisionNumber" type="hidden" />
+        <input asp-for="Form.ExpectedHash" type="hidden" />
+        <div class="form-grid">
+            <div>
+                <label asp-for="Form.ModelName">OpenAI model</label>
+                <input asp-for="Form.ModelName" autocomplete="off" />
+                <span asp-validation-for="Form.ModelName"></span>
+                <p class="field-help">The default is a lower-cost structured-output model. Change it only to a model available to your OpenAI API project.</p>
+            </div>
+            <div>
+                <label asp-for="Form.BatchSize">Candidates per AI run</label>
+                <input asp-for="Form.BatchSize" type="number" min="1" max="100" />
+                <span asp-validation-for="Form.BatchSize"></span>
+                <p class="field-help">Founder Scout evaluates candidates sequentially by default and saves each result.</p>
+            </div>
+        </div>
+        <div>
+            <label asp-for="Form.AdditionalContext">Founder context and evaluation instructions</label>
+            <textarea asp-for="Form.AdditionalContext" rows="12" maxlength="20000" placeholder="Paste the useful non-secret context or instructions from your classic ChatGPT conversation here."></textarea>
+            <span asp-validation-for="Form.AdditionalContext"></span>
+            <p class="field-help">The API cannot read ChatGPT Memory or old chats. This text is stored locally and sent with each candidate evaluation. Do not include passwords, API keys, protected personal traits, or unsupported claims.</p>
+        </div>
+        <button class="primary" type="submit">Save AI settings</button>
+    </form>
+</section>
+
+<section class="panel" aria-labelledby="openai-key-heading">
+    <div class="panel-heading">
+        <div>
+            <h2 id="openai-key-heading">Protected OpenAI API key</h2>
+            <p class="supporting">The key is stored outside SQLite with Windows DPAPI for the current user. It is write-only and never displayed.</p>
+        </div>
+        <span class="pill @(Model.ApiKeyConfigured ? "positive" : "attention")">@(Model.ApiKeyConfigured ? "Configured" : "Not configured")</span>
+    </div>
+    <form method="post" asp-page-handler="SetApiKey" class="stack">
+        <div>
+            <label for="openai-api-key">New or replacement API key</label>
+            <input id="openai-api-key" name="apiKey" type="password" autocomplete="new-password" maxlength="8192" required />
+            <p class="field-help">Use an OpenAI Platform project key. Do not enter your ChatGPT password, browser cookies, or Startup School password.</p>
+        </div>
+        <button class="secondary" type="submit">Protect API key</button>
+    </form>
+    @if (Model.ApiKeyConfigured)
+    {
+        <form method="post" asp-page-handler="DeleteApiKey" data-confirm="Remove the protected OpenAI API key for this Windows user?">
+            <button class="danger" type="submit">Remove API key</button>
+        </form>
+    }
+</section>

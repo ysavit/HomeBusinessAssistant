@@ -14,6 +14,7 @@ public sealed class FounderScoutResultsService(
     string dataDirectory,
     TimeProvider timeProvider) : IFounderScoutResultsQuery, IFounderScoutResultsCommands, IFounderScoutReportLeaseRepository
 {
+    private static readonly string[] NonProfileSourceKeys = ["founders-you-may-know", "saved-profiles"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly JsonSerializerOptions StrictJson = new(JsonSerializerDefaults.Web)
     {
@@ -24,6 +25,120 @@ public sealed class FounderScoutResultsService(
     private readonly TimeProvider timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     /// <inheritdoc />
+    public async ValueTask<FounderScoutAnalysisQueueResult> QueueUnanalyzedForAnalysisAsync(
+        int maximumCandidates,
+        string actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (maximumCandidates is < 1 or > 500) throw new ArgumentOutOfRangeException(nameof(maximumCandidates));
+        ValidateActor(actor);
+
+        string pending = CandidateStatus.PendingAnalysis.ToString();
+        string analyzing = CandidateStatus.Analyzing.ToString();
+        string parsedSnapshot = ProfileSnapshotStatus.Parsed.ToString();
+        string failedSnapshot = ProfileSnapshotStatus.Failed.ToString();
+        DateTimeOffset nowUtc = timeProvider.GetUtcNow().ToUniversalTime();
+        await using FounderScoutDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        IQueryable<CandidateEntity> active = ActiveCandidates(context);
+        int alreadyPending = await active.CountAsync(
+            item => item.Status == pending || item.Status == analyzing,
+            cancellationToken).ConfigureAwait(false);
+        IQueryable<CandidateEntity> eligible = active.Where(item =>
+            item.CurrentSnapshotId.HasValue
+            && !item.LatestEvaluationId.HasValue
+            && item.Status != pending
+            && item.Status != analyzing
+            && context.Set<ScreeningDecisionEntity>().Any(screening =>
+                screening.CandidateId == item.Id
+                && screening.SnapshotId == item.CurrentSnapshotId.Value));
+        int eligibleCount = await eligible.CountAsync(cancellationToken).ConfigureAwait(false);
+        List<CandidateEntity> candidates = await eligible
+            .OrderByDescending(item => item.LastSeenAtUtc)
+            .ThenBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.Id)
+            .Take(maximumCandidates)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (CandidateEntity candidate in candidates)
+        {
+            context.Attach(candidate);
+            string previousStatus = candidate.Status;
+            candidate.Status = pending;
+            candidate.AnalysisWorkerId = null;
+            candidate.AnalysisClaimedAtUtc = null;
+            candidate.AnalysisClaimExpiresAtUtc = null;
+            candidate.LastAnalysisErrorCode = null;
+            candidate.UpdatedAtUtc = nowUtc;
+            candidate.Version++;
+
+            ProfileSnapshotEntity? snapshot = await context.Set<ProfileSnapshotEntity>()
+                .SingleOrDefaultAsync(item => item.Id == candidate.CurrentSnapshotId, cancellationToken)
+                .ConfigureAwait(false);
+            if (snapshot is not null && snapshot.Status is not null
+                && (snapshot.Status == parsedSnapshot || snapshot.Status == failedSnapshot))
+            {
+                snapshot.Status = ProfileSnapshotStatus.PendingAnalysis.ToString();
+            }
+
+            context.Add(NewAction(
+                candidate.Id,
+                CandidateActionType.StateTransitioned,
+                nowUtc,
+                actor,
+                "The user explicitly queued a stored candidate for AI evaluation.",
+                new { from = previousStatus, to = pending, reasonCode = "analysis.user-requested" },
+                null,
+                null,
+                Guid.NewGuid().ToString("D")));
+        }
+
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new(candidates.Count, alreadyPending, eligibleCount);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<bool> QueueCandidateForAnalysisAsync(Guid candidateId, string actor, CancellationToken cancellationToken = default)
+    {
+        if (candidateId == Guid.Empty) throw new ArgumentException("A candidate is required.", nameof(candidateId));
+        ValidateActor(actor);
+        DateTimeOffset nowUtc = timeProvider.GetUtcNow().ToUniversalTime();
+        await using FounderScoutDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        CandidateEntity? candidate = await ActiveCandidates(context)
+            .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken).ConfigureAwait(false);
+        if (candidate is null || !candidate.CurrentSnapshotId.HasValue
+            || candidate.Status == CandidateStatus.Analyzing.ToString()
+            || !await context.Set<ScreeningDecisionEntity>().AnyAsync(item => item.CandidateId == candidateId
+                && item.SnapshotId == candidate.CurrentSnapshotId.Value, cancellationToken).ConfigureAwait(false))
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        context.Attach(candidate);
+        string previousStatus = candidate.Status;
+        candidate.Status = CandidateStatus.PendingAnalysis.ToString();
+        candidate.AnalysisWorkerId = null;
+        candidate.AnalysisClaimedAtUtc = null;
+        candidate.AnalysisClaimExpiresAtUtc = null;
+        candidate.LastAnalysisErrorCode = null;
+        candidate.UpdatedAtUtc = nowUtc;
+        candidate.Version++;
+        context.Add(NewAction(candidate.Id, CandidateActionType.StateTransitioned, nowUtc, actor,
+            "The user explicitly requested a fresh AI evaluation for this candidate.",
+            new { from = previousStatus, to = candidate.Status, reasonCode = "analysis.candidate-requested" },
+            null, candidate.LatestEvaluationId, Guid.NewGuid().ToString("D")));
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <inheritdoc />
     public async ValueTask<FounderScoutDashboard> GetDashboardAsync(
         DateTimeOffset sinceUtc,
         CancellationToken cancellationToken = default)
@@ -31,7 +146,7 @@ public sealed class FounderScoutResultsService(
         DateTimeOffset boundary = sinceUtc.ToUniversalTime();
         DateTimeOffset nowUtc = timeProvider.GetUtcNow().ToUniversalTime();
         await using FounderScoutDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        IQueryable<CandidateEntity> active = context.Set<CandidateEntity>().AsNoTracking().Where(item => !item.MergedIntoCandidateId.HasValue);
+        IQueryable<CandidateEntity> active = ActiveCandidates(context);
         int candidates = await active.CountAsync(cancellationToken).ConfigureAwait(false);
         int changed = await active.CountAsync(item => item.FirstSeenAtUtc >= boundary || item.UpdatedAtUtc >= boundary, cancellationToken).ConfigureAwait(false);
         int pendingScreening = await context.Set<ProfileSnapshotEntity>().AsNoTracking()
@@ -97,7 +212,7 @@ public sealed class FounderScoutResultsService(
         DateTimeOffset nowUtc = timeProvider.GetUtcNow().ToUniversalTime();
         await using FounderScoutDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         ManualInvitationWindowEntity? window = await CurrentWindowAsync(context, nowUtc, cancellationToken).ConfigureAwait(false);
-        IQueryable<CandidateEntity> source = context.Set<CandidateEntity>().AsNoTracking().Where(item => !item.MergedIntoCandidateId.HasValue);
+        IQueryable<CandidateEntity> source = ActiveCandidates(context);
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -776,6 +891,11 @@ public sealed class FounderScoutResultsService(
         FounderScoutCandidateSort.NameAscending => source.OrderBy(item => item.DisplayName).ThenByDescending(item => item.InvitationPriority).ThenBy(item => item.Id),
         _ => source.OrderByDescending(item => item.InvitationPriority).ThenByDescending(item => item.Confidence).ThenByDescending(item => item.ActivityScore).ThenBy(item => item.DisplayName).ThenBy(item => item.Id),
     };
+
+    private static IQueryable<CandidateEntity> ActiveCandidates(FounderScoutDbContext context) =>
+        context.Set<CandidateEntity>().AsNoTracking().Where(item =>
+            !item.MergedIntoCandidateId.HasValue
+            && !NonProfileSourceKeys.Contains(item.CurrentSourceProfileKey));
 
     private static FounderScoutCandidateListItem CreateListItem(CandidateEntity candidate, int rank, ProfileSnapshotEntity? snapshot, EvaluationEntity? evaluation, InvitationQueueEntryEntity? queue, bool profileChanged, bool hasTraction) => new(
         rank,

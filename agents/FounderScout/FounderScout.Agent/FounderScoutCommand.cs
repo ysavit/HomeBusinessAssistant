@@ -61,7 +61,7 @@ public static class FounderScoutCommand
         AgentExecutionContextParseResult parsed = AgentExecutionContextParser.Parse(standardArguments);
         if (parsed.Context is not AgentExecutionContext context
             || context.AgentId != FounderScoutDefaults.AgentId
-            || context.CommandName is not ("run" or "discover" or "analyze" or "authenticate" or "import" or "report" or "diagnose" or "record-fixture"))
+            || context.CommandName is not ("start" or "run" or "discover" or "analyze" or "analyze-candidate" or "authenticate" or "import" or "report" or "diagnose" or "record-fixture"))
         {
             await WriteUsageAsync(standardError).ConfigureAwait(false);
             return AgentExitCode.InvalidArguments;
@@ -161,16 +161,166 @@ public static class FounderScoutCommand
         var repository = new FounderScoutRepository(database.ContextFactory, timeProvider);
         return context.CommandName switch
         {
+            "start" => await ExecuteStartAsync(context, input, directOptions, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "import" => await ExecuteImportAsync(context, input, directOptions.InputPath, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "report" => await ExecuteReportAsync(context, input, directOptions, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "diagnose" => await ExecuteDiagnoseAsync(context, input, directOptions, configuration, database, repository, events, cancellationToken).ConfigureAwait(false),
             "run" => await ExecuteRunAsync(context, input, directOptions, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "discover" => await ExecuteDiscoverAsync(context, input, directOptions, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "analyze" => await ExecuteAnalyzeAsync(context, input, directOptions, configuration, database, repository, events, cancellationToken).ConfigureAwait(false),
+            "analyze-candidate" => await ExecuteAnalyzeCandidateAsync(context, input, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "authenticate" => await ExecuteAuthenticateAsync(context, input, directOptions, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             "record-fixture" => await ExecuteRecordFixtureAsync(context, input, directOptions, configuration, database, repository, events, timeProvider, cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidOperationException("The Founder Scout command dispatch is invalid."),
         };
+    }
+
+    private static async ValueTask<AgentExecutionResult> ExecuteStartAsync(
+        AgentExecutionContext context,
+        AgentExecutionInput input,
+        FounderScoutDirectOptions directOptions,
+        FounderScoutConfiguration configuration,
+        FounderScoutDatabase database,
+        FounderScoutRepository repository,
+        IAgentEventWriter events,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        string? accountId = directOptions.AccountId ?? ReadString(input.OccurrenceArguments, "accountId", "account");
+        BrowserAccount? account = string.IsNullOrWhiteSpace(accountId)
+            ? null
+            : await ((IBrowserAccountRepository)repository).GetAsync(accountId, cancellationToken).ConfigureAwait(false);
+        bool reusedHealthySession = account is { Enabled: true, SessionStatus: BrowserSessionStatus.Healthy };
+        if (reusedHealthySession)
+        {
+            await events.WriteProgressAsync(new(
+                Current: 0,
+                Total: 2,
+                Percentage: 0,
+                Phase: "founder-scout-start",
+                Message: "Reusing the dedicated authenticated browser profile."), cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            AgentExecutionResult authenticated = await ExecuteAuthenticateAsync(
+                context,
+                input,
+                directOptions,
+                configuration,
+                database,
+                repository,
+                events,
+                timeProvider,
+                cancellationToken).ConfigureAwait(false);
+            if (authenticated.ExitCode != AgentExitCode.Success)
+            {
+                return authenticated;
+            }
+        }
+
+        await events.WriteProgressAsync(new(
+            Current: 1,
+            Total: 2,
+            Percentage: 50,
+            Phase: "founder-scout-start",
+            Message: "Authentication is ready. Browsing and saving profiles now; AI evaluation is not part of this action."), cancellationToken).ConfigureAwait(false);
+
+        AgentExecutionResult discovered = await ExecuteDiscoverAsync(
+            context,
+            input,
+            directOptions,
+            configuration,
+            database,
+            repository,
+            events,
+            timeProvider,
+            cancellationToken).ConfigureAwait(false);
+        if (reusedHealthySession && discovered.ExitCode == AgentExitCode.AuthenticationRequired)
+        {
+            await events.WriteWarningAsync(new(
+                "founderScout.start.sessionExpired",
+                "The saved browser session expired. Opening the official site for manual sign-in, then retrying discovery once."), cancellationToken).ConfigureAwait(false);
+            AgentExecutionResult authenticated = await ExecuteAuthenticateAsync(
+                context,
+                input,
+                directOptions,
+                configuration,
+                database,
+                repository,
+                events,
+                timeProvider,
+                cancellationToken).ConfigureAwait(false);
+            if (authenticated.ExitCode != AgentExitCode.Success)
+            {
+                return authenticated;
+            }
+
+            discovered = await ExecuteDiscoverAsync(
+                context,
+                input,
+                directOptions,
+                configuration,
+                database,
+                repository,
+                events,
+                timeProvider,
+                cancellationToken).ConfigureAwait(false);
+        }
+        if (discovered.ExitCode != AgentExitCode.Success)
+        {
+            return discovered;
+        }
+
+        AgentExecutionResult? screened = null;
+        string screeningStatus;
+        try
+        {
+            screened = await ExecuteAnalyzeAsync(
+                context,
+                input,
+                directOptions with
+                {
+                    Phase = "screen",
+                    Maximum = configuration.Analysis.BatchSize,
+                },
+                configuration,
+                database,
+                repository,
+                events,
+                cancellationToken).ConfigureAwait(false);
+            screeningStatus = screened.ExitCode == AgentExitCode.Success ? "Completed" : "NeedsAttention";
+            if (screened.ExitCode != AgentExitCode.Success)
+            {
+                await events.WriteWarningAsync(new(
+                    "founderScout.start.screeningFailed",
+                    "Profiles were saved locally, but optional deterministic screening needs attention. The saved candidates remain available."), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            screeningStatus = "NeedsAttention";
+            await events.WriteWarningAsync(new(
+                "founderScout.start.screeningFailed",
+                "Profiles were saved locally, but optional deterministic screening failed. The saved candidates remain available.",
+                JsonSerializer.SerializeToElement(new { failureKind = exception.GetType().Name }, JsonOptions)), cancellationToken).ConfigureAwait(false);
+        }
+
+        return new(
+            AgentExitCode.Success,
+            AgentRunStatus.Completed,
+            screeningStatus == "Completed"
+                ? "Founder Scout browsed and saved profiles, then completed deterministic screening without AI."
+                : "Founder Scout browsed and saved profiles. Screening needs attention, but the captured candidates are available.",
+            JsonSerializer.SerializeToElement(new
+            {
+                result = "Captured",
+                phase = "capture-first",
+                candidatesStored = true,
+                noAiCalls = true,
+                discovery = discovered.Data,
+                screeningStatus,
+                screening = screened?.Data,
+            }, JsonOptions));
     }
 
     private static async ValueTask<AgentExecutionResult> ExecuteImportAsync(
@@ -306,6 +456,112 @@ public static class FounderScoutCommand
             }, JsonOptions));
     }
 
+    private static async ValueTask<AgentExecutionResult> ExecuteAnalyzeCandidateAsync(
+        AgentExecutionContext context,
+        AgentExecutionInput input,
+        FounderScoutConfiguration configuration,
+        FounderScoutDatabase database,
+        FounderScoutRepository repository,
+        IAgentEventWriter events,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(ReadString(input.OccurrenceArguments, "candidateId"), out Guid candidateId)
+            || candidateId == Guid.Empty)
+        {
+            return Failure(AgentExitCode.InvalidArguments, "Select one saved candidate to analyze.");
+        }
+
+        Candidate? candidate = await ((ICandidateRepository)repository).GetAsync(candidateId, cancellationToken).ConfigureAwait(false);
+        ProfileSnapshot? current = candidate?.CurrentSnapshotId is Guid snapshotId
+            ? await ((IProfileSnapshotRepository)repository).GetAsync(snapshotId, cancellationToken).ConfigureAwait(false)
+            : null;
+        if (candidate is null || current is null || candidate.MergedIntoCandidateId.HasValue
+            || string.IsNullOrWhiteSpace(current.CanonicalSourceUrl))
+        {
+            return Failure(AgentExitCode.InvalidArguments, "This candidate has no refreshable saved source profile.");
+        }
+
+        BrowserAccount? account = await ((IBrowserAccountRepository)repository).GetAsync(current.SourceAccountId, cancellationToken).ConfigureAwait(false);
+        if (account is not { Enabled: true, SessionStatus: BrowserSessionStatus.Healthy })
+        {
+            return Failure(AgentExitCode.AuthenticationRequired, "The candidate's browser account needs manual authentication before refresh.");
+        }
+
+        StartupSchoolSourceOptions sourceOptions = configuration.StartupSchool ?? StartupSchoolSourceOptions.Default;
+        await events.WriteProgressAsync(new(0, 4, 0, "candidate-refresh", "Opening the selected candidate in the dedicated browser profile."), cancellationToken).ConfigureAwait(false);
+        BrowserRuntimeStatus runtime = await new PlaywrightBrowserRuntimeFactory().DiagnoseAsync(sourceOptions.BrowserChannel, cancellationToken).ConfigureAwait(false);
+        if (!runtime.IsAvailable)
+        {
+            await events.WriteErrorAsync(new(runtime.ReasonCode, runtime.Message, false), cancellationToken).ConfigureAwait(false);
+            return Failure(AgentExitCode.PermanentFailure, "The browser runtime is unavailable.");
+        }
+
+        BrowserSessionOpenResult opened = await new PlaywrightBrowserSessionManager(database.DataDirectory).OpenAsync(new(
+            account.Id, BrowserProfilePath.Resolve(database.DataDirectory, account.Id), sourceOptions.HeadlessDiscovery,
+            sourceOptions.BrowserChannel, sourceOptions.NavigationTimeoutSeconds), cancellationToken).ConfigureAwait(false);
+        if (!opened.IsSuccess)
+        {
+            await TransitionAccountStopAsync(repository, account, opened.StopSignal, timeProvider, cancellationToken).ConfigureAwait(false);
+            return StopResult(opened.StopSignal, "Could not open the candidate's browser profile.");
+        }
+
+        ProfileCaptureExtractionResult extracted;
+        await using (IBrowserSession browser = opened.Session!)
+        {
+            extracted = await new PlaywrightProfileCaptureExtractor(new PlaywrightBrowserChallengeDetector(), timeProvider)
+                .ExtractAsync(browser, sourceOptions, account.Id, current.SourceSegmentId,
+                    new(current.SourceProfileKey, current.CanonicalSourceUrl), cancellationToken).ConfigureAwait(false);
+        }
+        if (extracted.StopSignal.Kind != BrowserStopKind.None || extracted.Capture is null)
+        {
+            BrowserStopSignal stop = extracted.StopSignal.Kind == BrowserStopKind.None
+                ? new(BrowserStopKind.ParserFailure, "browser.parser.emptyCapture", "The source returned no validated candidate profile.")
+                : extracted.StopSignal;
+            await TransitionAccountStopAsync(repository, account, stop, timeProvider, cancellationToken).ConfigureAwait(false);
+            await events.WriteErrorAsync(new(stop.ReasonCode, stop.Message, stop.IsTransient), cancellationToken).ConfigureAwait(false);
+            return StopResult(stop, "Candidate refresh stopped before AI analysis.");
+        }
+
+        FounderScoutCaptureCommitResult committed = await new FounderScoutCaptureCommitService(
+            new FounderScoutRawArtifactStore(database.DataDirectory, database.SnapshotsDirectory), repository, repository)
+            .CommitAsync(new(extracted.Capture, context.RunId.Value, context.RunId.Value.ToString("D"),
+                configuration.Retention.RawProfileDays), cancellationToken).ConfigureAwait(false);
+        if (committed.CandidateId != candidateId)
+        {
+            return Failure(AgentExitCode.PermanentFailure, "The refreshed profile resolved to another candidate; review its identity before AI analysis.");
+        }
+        await events.WriteProgressAsync(new(1, 4, 25, "candidate-refresh", committed.SnapshotCreated
+            ? "Fresh candidate evidence was saved. Screening it now."
+            : "The source profile is unchanged. Checking saved screening."), cancellationToken).ConfigureAwait(false);
+
+        if (committed.SnapshotCreated)
+        {
+            var processing = new FounderScoutProcessingService(repository,
+                new FounderScoutRawArtifactStore(database.DataDirectory, database.SnapshotsDirectory),
+                new DeterministicFounderProfileParser(), new DeterministicProfileRedactor(),
+                new CandidateIdentityResolver(), new DeterministicFounderScreeningEngine());
+            FounderScoutProcessingBatchResult screened = await processing.ProcessAsync(new(1,
+                $"candidate-screen-{Environment.ProcessId}-{context.RunId.Value:N}", context.RunId.Value,
+                context.RunId.Value.ToString("D"), configuration.Processing ?? FounderScoutProcessingSettings.Default,
+                committed.SnapshotId), cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (screened.Completed != 1)
+                return Failure(AgentExitCode.PermanentFailure, "The refreshed candidate could not be screened; AI analysis was not started.");
+        }
+
+        await events.WriteProgressAsync(new(2, 4, 50, "candidate-screening", "Screening is saved. Queueing this candidate for AI evaluation."), cancellationToken).ConfigureAwait(false);
+        var results = new FounderScoutResultsService(database.ContextFactory, database.DataDirectory, timeProvider);
+        if (!await results.QueueCandidateForAnalysisAsync(candidateId, "local-web", cancellationToken).ConfigureAwait(false))
+            return Failure(AgentExitCode.PermanentFailure, "This candidate is not ready for AI evaluation after refresh.");
+
+        await events.WriteProgressAsync(new(3, 4, 75, "candidate-ai", "Sending redacted evidence for this candidate to OpenAI."), cancellationToken).ConfigureAwait(false);
+        AgentExecutionResult analyzed = await ExecuteDeepAnalysisAsync(context, input, configuration, repository, events,
+            1, cancellationToken, candidateId, forceReanalysis: true).ConfigureAwait(false);
+        if (analyzed.ExitCode != AgentExitCode.Success) return analyzed;
+        await events.WriteProgressAsync(new(4, 4, 100, "candidate-ai", "Candidate analysis finished; open details to review the score and draft."), cancellationToken).ConfigureAwait(false);
+        return analyzed;
+    }
+
     private static async ValueTask<AgentExecutionResult> ExecuteAuthenticateAsync(
         AgentExecutionContext context,
         AgentExecutionInput input,
@@ -415,6 +671,25 @@ public static class FounderScoutCommand
             return Failure(AgentExitCode.InvalidArguments, "Founder Scout discovery requires an account ID.");
         }
 
+        StartupSchoolSourceOptions sourceOptions = configuration.StartupSchool ?? StartupSchoolSourceOptions.Default;
+        int? discoveryDelaySeconds = ReadInt(input.OccurrenceArguments, "discoveryDelaySeconds");
+        if (discoveryDelaySeconds is not null)
+        {
+            if (discoveryDelaySeconds is < 1 or > 60)
+            {
+                await events.WriteErrorAsync(new(
+                    "founderScout.discovery.delayInvalid",
+                    "The discovery delay must be between 1 and 60 seconds.",
+                    false), cancellationToken).ConfigureAwait(false);
+                return Failure(AgentExitCode.InvalidArguments, "Founder Scout rejected the discovery delay.");
+            }
+
+            sourceOptions = sourceOptions with
+            {
+                MinimumRequestSpacingMilliseconds = discoveryDelaySeconds.Value * 1_000,
+            };
+        }
+
         BrowserAccount? account = await ((IBrowserAccountRepository)repository).GetAsync(accountId, cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
@@ -438,7 +713,6 @@ public static class FounderScoutCommand
             return Failure(AgentExitCode.InvalidArguments, "Founder Scout rejected the discovery segment.");
         }
 
-        StartupSchoolSourceOptions sourceOptions = configuration.StartupSchool ?? StartupSchoolSourceOptions.Default;
         BrowserRuntimeStatus runtimeStatus = await new PlaywrightBrowserRuntimeFactory().DiagnoseAsync(sourceOptions.BrowserChannel, cancellationToken).ConfigureAwait(false);
         await WriteRuntimeMetricsAsync(events, runtimeStatus, cancellationToken).ConfigureAwait(false);
         if (!runtimeStatus.IsAvailable)
@@ -850,6 +1124,18 @@ public static class FounderScoutCommand
 
         if (string.Equals(phase, "deep", StringComparison.Ordinal))
         {
+            Guid? targetedCandidateId = null;
+            if (input.OccurrenceArguments.TryGetProperty("candidateId", out JsonElement candidateValue))
+            {
+                if (candidateValue.ValueKind != JsonValueKind.String
+                    || !Guid.TryParse(candidateValue.GetString(), out Guid parsedCandidateId)
+                    || parsedCandidateId == Guid.Empty
+                    || maximum != 1)
+                {
+                    return Failure(AgentExitCode.InvalidArguments, "Targeted AI analysis requires one valid candidate ID and max 1.");
+                }
+                targetedCandidateId = parsedCandidateId;
+            }
             return await ExecuteDeepAnalysisAsync(
                 context,
                 input,
@@ -857,7 +1143,8 @@ public static class FounderScoutCommand
                 repository,
                 events,
                 maximum,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                targetedCandidateId).ConfigureAwait(false);
         }
 
         FounderScoutProcessingSettings settings = configuration.Processing ?? FounderScoutProcessingSettings.Default;
@@ -923,7 +1210,9 @@ public static class FounderScoutCommand
         FounderScoutRepository repository,
         IAgentEventWriter events,
         int maximum,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? targetedCandidateId = null,
+        bool forceReanalysis = false)
     {
         FounderEvaluationPrompt prompt;
         try
@@ -965,19 +1254,44 @@ public static class FounderScoutCommand
                 repository,
                 provider.Client,
                 TimeProvider.System);
-            FounderDeepAnalysisBatchResult result = await service.AnalyzeAsync(new(
-                maximum,
-                configuration.Analysis.MaximumConcurrency,
-                $"deep-{Environment.ProcessId}-{context.RunId.Value:N}",
-                context.RunId.Value,
-                context.RunId.Value.ToString("D"),
-                configuration,
-                prompt), async (progress, token) => await events.WriteProgressAsync(new(
-                    progress.Current,
-                    progress.Maximum,
-                    progress.Maximum == 0 ? null : Math.Clamp((double)progress.Current / progress.Maximum * 100d, 0d, 100d),
-                    "deep-analysis",
-                    progress.Message), token).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+            FounderDeepAnalysisBatchResult result;
+            try
+            {
+                result = await service.AnalyzeAsync(new(
+                    maximum,
+                    targetedCandidateId.HasValue ? 1 : configuration.Analysis.MaximumConcurrency,
+                    $"deep-{Environment.ProcessId}-{context.RunId.Value:N}",
+                    context.RunId.Value,
+                    context.RunId.Value.ToString("D"),
+                    configuration,
+                    prompt,
+                    targetedCandidateId,
+                    forceReanalysis), async (progress, token) => await events.WriteProgressAsync(targetedCandidateId.HasValue
+                        ? new(3 + Math.Min(progress.Current, 1), 4,
+                            75d + Math.Min(progress.Current, 1) * 25d, "candidate-ai", progress.Message)
+                        : new(progress.Current, progress.Maximum,
+                            progress.Maximum == 0 ? null : Math.Clamp((double)progress.Current / progress.Maximum * 100d, 0d, 100d),
+                            "deep-analysis", progress.Message), token).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is FounderModelException
+                or HttpRequestException
+                or IOException
+                or InvalidDataException
+                or JsonException
+                or InvalidOperationException
+                or ArgumentException)
+            {
+                await events.WriteErrorAsync(new(
+                    "founderScout.analysis.failedSafely",
+                    "AI evaluation failed at a bounded boundary. Previously captured candidates remain stored and available.",
+                    Transient: exception is HttpRequestException or IOException,
+                    JsonSerializer.SerializeToElement(new { failureKind = exception.GetType().Name }, JsonOptions)), cancellationToken).ConfigureAwait(false);
+                return Failure(
+                    exception is HttpRequestException or IOException
+                        ? AgentExitCode.TransientFailure
+                        : AgentExitCode.PermanentFailure,
+                    "Founder Scout AI evaluation failed safely; captured candidates were preserved.");
+            }
             await WriteAnalysisMetricsAsync(events, result, cancellationToken).ConfigureAwait(false);
             await events.WriteCheckpointAsync(new(
                 "founder-scout-deep-analysis",
@@ -997,12 +1311,22 @@ public static class FounderScoutCommand
                 }, JsonOptions)), cancellationToken).ConfigureAwait(false);
             if (result.AttentionRequired)
             {
-                await events.WriteErrorAsync(new(result.AttentionCode ?? "founderScout.analysis.attentionRequired", "AI provider authentication or configuration requires attention; analysis should be paused.", false), cancellationToken).ConfigureAwait(false);
+                bool transientProviderFailure = result.AttentionCode is "analysis.provider.throttled"
+                    or "analysis.provider.unavailable"
+                    or "analysis.provider.timeout"
+                    or "analysis.provider.network";
+                string attentionMessage = result.AttentionCode switch
+                {
+                    "analysis.provider.throttled" => "OpenAI reported a rate or quota limit. Check the API project's usage and billing before retrying analysis.",
+                    "analysis.provider.timeout" or "analysis.provider.network" or "analysis.provider.unavailable" => "OpenAI is temporarily unavailable. Saved candidates remain pending for a later analysis run.",
+                    _ => "OpenAI rejected the request. Check the API key, selected model, and project access before retrying analysis.",
+                };
+                await events.WriteErrorAsync(new(result.AttentionCode ?? "founderScout.analysis.attentionRequired", attentionMessage, transientProviderFailure), cancellationToken).ConfigureAwait(false);
                 return new(
-                    AgentExitCode.InvalidConfiguration,
+                    transientProviderFailure ? AgentExitCode.TransientFailure : AgentExitCode.InvalidConfiguration,
                     AgentRunStatus.Failed,
-                    "Founder Scout deep analysis requires provider attention.",
-                    JsonSerializer.SerializeToElement(new { result = "AttentionRequired", scheduleAction = "Pause", result.AttentionCode, result.Claimed, result.Completed }, JsonOptions));
+                    attentionMessage,
+                    JsonSerializer.SerializeToElement(new { result = "AttentionRequired", scheduleAction = transientProviderFailure ? "None" : "Pause", result.AttentionCode, result.Claimed, result.Completed }, JsonOptions));
             }
 
             bool failedOnly = result.Claimed > 0 && result.Completed == 0 && result.Failed > 0;
@@ -1359,8 +1683,8 @@ public static class FounderScoutCommand
         {
             string name = arguments[index];
             bool recognized = name == "--input" && arguments[0] == "import"
-                || name == "--account" && arguments[0] is "run" or "discover" or "authenticate" or "diagnose" or "record-fixture"
-                || name == "--segment" && arguments[0] is "run" or "discover"
+                || name == "--account" && arguments[0] is "start" or "run" or "discover" or "authenticate" or "diagnose" or "record-fixture"
+                || name == "--segment" && arguments[0] is "start" or "run" or "discover"
                 || name == "--phase" && arguments[0] is "run" or "analyze"
                 || name == "--max" && arguments[0] is "run" or "analyze"
                 || name == "--type" && arguments[0] == "report"
@@ -1437,7 +1761,7 @@ public static class FounderScoutCommand
 
     private static async ValueTask WriteUsageAsync(TextWriter standardError) =>
         await standardError.WriteLineAsync(
-            "Usage: FounderScout run|discover [--account <id>] [--segment <id>]|authenticate --account <id>|record-fixture --account <id>|analyze --phase screen|deep|all [--max <1..500>]|import [--input <absolute-import-path>]|report [--type all|top-candidates|invitation-queue] [--top <1..1000>]|diagnose [--account <id>] <standard Agent SDK options> | protocol-demo").ConfigureAwait(false);
+            "Usage: FounderScout start|run|discover [--account <id>] [--segment <id>]|authenticate --account <id>|record-fixture --account <id>|analyze --phase screen|deep|all [--max <1..500>]|import [--input <absolute-import-path>]|report [--type all|top-candidates|invitation-queue] [--top <1..1000>]|diagnose [--account <id>] <standard Agent SDK options> | protocol-demo").ConfigureAwait(false);
 
     private sealed record FounderScoutDirectOptions(string? InputPath, string? AccountId, string? SegmentId, string? Phase, int? Maximum, string? ReportType, int? Top);
 }

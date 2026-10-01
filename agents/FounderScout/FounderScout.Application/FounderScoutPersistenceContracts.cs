@@ -218,6 +218,8 @@ public interface IFounderScoutProcessingQueue
 {
     /// <summary>Claims the next unprocessed raw snapshot with an expiring lease.</summary>
     ValueTask<FounderScoutProcessingClaim?> ClaimPendingProcessingAsync(string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken = default);
+    /// <summary>Claims only the requested captured snapshot.</summary>
+    ValueTask<FounderScoutProcessingClaim?> ClaimProcessingSnapshotAsync(Guid snapshotId, string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken = default);
     /// <summary>Atomically commits normalization, identities, screening, state, and actions.</summary>
     ValueTask<CompleteFounderProfileProcessingResult> CompleteProcessingAsync(CompleteFounderProfileProcessingRequest request, CancellationToken cancellationToken = default);
     /// <summary>Releases or permanently fails a processing claim owned by the worker.</summary>
@@ -428,6 +430,8 @@ public interface IFounderScoutWorkQueue
         string workerId,
         TimeSpan leaseDuration,
         CancellationToken cancellationToken = default);
+    /// <summary>Claims only the requested candidate when it is pending.</summary>
+    ValueTask<FounderScoutAnalysisClaim?> ClaimCandidateAnalysisAsync(Guid candidateId, string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken = default);
     /// <summary>Releases a claim only when the worker still owns it.</summary>
     ValueTask<bool> ReleaseAnalysisClaimAsync(
         ReleaseAnalysisClaimRequest request,

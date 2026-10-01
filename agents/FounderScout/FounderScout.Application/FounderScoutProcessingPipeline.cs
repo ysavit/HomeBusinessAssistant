@@ -13,7 +13,8 @@ public sealed record FounderScoutProcessingBatchRequest(
     string WorkerId,
     Guid RunId,
     string CorrelationId,
-    FounderScoutProcessingSettings Settings);
+    FounderScoutProcessingSettings Settings,
+    Guid? SnapshotId = null);
 
 /// <summary>Deterministic processing metrics and reason distribution.</summary>
 public sealed record FounderScoutProcessingBatchResult(
@@ -86,7 +87,9 @@ public sealed class FounderScoutProcessingService(
         while (claimed < request.MaximumProfiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            FounderScoutProcessingClaim? claim = await queue.ClaimPendingProcessingAsync(request.WorkerId, lease, cancellationToken).ConfigureAwait(false);
+            FounderScoutProcessingClaim? claim = request.SnapshotId.HasValue
+                ? await queue.ClaimProcessingSnapshotAsync(request.SnapshotId.Value, request.WorkerId, lease, cancellationToken).ConfigureAwait(false)
+                : await queue.ClaimPendingProcessingAsync(request.WorkerId, lease, cancellationToken).ConfigureAwait(false);
             if (claim is null) break;
             claimed++;
             if (progress is not null)
@@ -199,6 +202,8 @@ public sealed class FounderScoutProcessingService(
         ArgumentNullException.ThrowIfNull(request.Settings);
         if (request.MaximumProfiles is < 1 or > 500 || request.RunId == Guid.Empty || string.IsNullOrWhiteSpace(request.WorkerId) || request.WorkerId.Length > 128 || string.IsNullOrWhiteSpace(request.CorrelationId) || request.CorrelationId.Length > 128)
             throw new ArgumentException("The Founder Scout processing batch request is invalid.", nameof(request));
+        if (request.SnapshotId == Guid.Empty || request.SnapshotId.HasValue && request.MaximumProfiles != 1)
+            throw new ArgumentException("Targeted processing requires one valid snapshot and a batch size of one.", nameof(request));
     }
 
     private static NormalizedFounderProfile? DeserializePrevious(string? json)

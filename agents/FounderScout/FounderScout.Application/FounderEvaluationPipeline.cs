@@ -13,7 +13,9 @@ public sealed record FounderDeepAnalysisBatchRequest(
     Guid RunId,
     string CorrelationId,
     FounderScoutConfiguration Configuration,
-    FounderEvaluationPrompt Prompt);
+    FounderEvaluationPrompt Prompt,
+    Guid? CandidateId = null,
+    bool ForceReanalysis = false);
 
 /// <summary>One bounded deep-analysis progress update.</summary>
 public sealed record FounderDeepAnalysisProgress(int Current, int Maximum, Guid CandidateId, string Message);
@@ -111,7 +113,7 @@ public sealed class FounderDeepAnalysisService
         CancellationToken cancellationToken = default)
     {
         ValidateRequest(request);
-        int reevaluationQueued = await QueueChangedInputsAsync(request, cancellationToken).ConfigureAwait(false);
+        int reevaluationQueued = request.CandidateId.HasValue ? 0 : await QueueChangedInputsAsync(request, cancellationToken).ConfigureAwait(false);
         var accumulator = new AnalysisAccumulator(reevaluationQueued);
         int nextSlot = 0;
         int concurrency = Math.Min(request.MaximumConcurrency, request.MaximumCandidates);
@@ -122,10 +124,9 @@ public sealed class FounderDeepAnalysisService
             {
                 int slot = Interlocked.Increment(ref nextSlot);
                 if (slot > request.MaximumCandidates) break;
-                FounderScoutAnalysisClaim? claim = await queue.ClaimPendingAnalysisAsync(
-                    workerId,
-                    TimeSpan.FromMinutes(10),
-                    cancellationToken).ConfigureAwait(false);
+                FounderScoutAnalysisClaim? claim = request.CandidateId.HasValue
+                    ? await queue.ClaimCandidateAnalysisAsync(request.CandidateId.Value, workerId, TimeSpan.FromMinutes(10), cancellationToken).ConfigureAwait(false)
+                    : await queue.ClaimPendingAnalysisAsync(workerId, TimeSpan.FromMinutes(10), cancellationToken).ConfigureAwait(false);
                 if (claim is null) break;
                 accumulator.IncrementClaimed();
                 if (progress is not null)
@@ -169,14 +170,16 @@ public sealed class FounderDeepAnalysisService
             EvaluationAggregate? previous = await evaluations.GetAsync(candidate.LatestEvaluationId.Value, cancellationToken).ConfigureAwait(false);
             if (snapshot is null || screening is null || previous is null) continue;
             FounderEvaluationRequest current = CreateRequest(candidate, snapshot, screening, request, []);
-            if (string.Equals(current.CalculateInputHash(), previous.Evaluation.InputHash, StringComparison.Ordinal)) continue;
+            string currentHash = current.CalculateInputHash();
+            if (string.Equals(currentHash, previous.Evaluation.InputHash, StringComparison.Ordinal)
+                || HasMatchingBaseInputHash(previous.Evaluation.StructuredEvaluationJson, currentHash)) continue;
             _ = await candidates.TransitionAsync(new(
                 candidate.Id,
                 CandidateStatus.PendingAnalysis,
                 "analysis.behaviorInput.changed",
                 request.WorkerId,
                 "A behavior-affecting evaluation input changed.",
-                JsonSerializer.Serialize(new { previous = previous.Evaluation.InputHash, current = current.CalculateInputHash() }, StrictJson),
+                JsonSerializer.Serialize(new { previous = previous.Evaluation.InputHash, current = currentHash }, StrictJson),
                 null,
                 previous.Evaluation.Id,
                 request.RunId,
@@ -185,6 +188,21 @@ public sealed class FounderDeepAnalysisService
             if (queued >= request.MaximumCandidates) break;
         }
         return queued;
+    }
+
+    private static bool HasMatchingBaseInputHash(string structuredEvaluationJson, string currentHash)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(structuredEvaluationJson);
+            return document.RootElement.TryGetProperty("request", out JsonElement request)
+                && request.TryGetProperty("baseInputHash", out JsonElement baseHash)
+                && string.Equals(baseHash.GetString(), currentHash, StringComparison.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private async ValueTask ProcessClaimAsync(
@@ -210,9 +228,14 @@ public sealed class FounderDeepAnalysisService
                 return;
             }
 
-            FounderEvaluationRequest initialRequest = CreateRequest(claim.Candidate, snapshot, screening, batch, []);
+            FounderEvaluationRequest initialRequest = CreateRequest(claim.Candidate, snapshot, screening, batch, []) with
+            {
+                ExplicitReanalysisId = batch.ForceReanalysis ? batch.RunId : null,
+            };
             string inputHash = initialRequest.CalculateInputHash();
-            EvaluationAggregate? cached = await evaluations.GetCompletedByInputHashAsync(claim.Candidate.Id, inputHash, cancellationToken).ConfigureAwait(false);
+            EvaluationAggregate? cached = batch.ForceReanalysis
+                ? null
+                : await evaluations.GetCompletedByInputHashAsync(claim.Candidate.Id, inputHash, cancellationToken).ConfigureAwait(false);
             if (cached is not null)
             {
                 InvitationDraft? cachedDraft = await invitations.GetForEvaluationAsync(cached.Evaluation.Id, cancellationToken).ConfigureAwait(false);
@@ -240,7 +263,16 @@ public sealed class FounderDeepAnalysisService
             {
                 bool retry = attempt.TransientFailure;
                 await ReleaseAsync(claim, batch, attempt.ErrorCode ?? "analysis.provider.failed", retry, cancellationToken).ConfigureAwait(false);
-                accumulator.RecordFailure(manualReview: !retry);
+                if (retry)
+                {
+                    // A provider-wide outage or rate limit applies to the whole batch. Releasing this
+                    // candidate makes it claimable again, so stop before charging for it repeatedly.
+                    accumulator.RecordAttention(attempt.ErrorCode ?? "analysis.provider.failed");
+                }
+                else
+                {
+                    accumulator.RecordFailure(manualReview: true);
+                }
                 return;
             }
 
@@ -457,6 +489,9 @@ public sealed class FounderDeepAnalysisService
                 request.ModelOrDeployment,
                 request.ProviderPolicyVersion,
                 inputHash = request.CalculateInputHash(),
+                baseInputHash = request.ExplicitReanalysisId.HasValue
+                    ? (request with { ExplicitReanalysisId = null }).CalculateInputHash()
+                    : null,
             },
             response,
             scores,
@@ -647,7 +682,9 @@ public sealed class FounderDeepAnalysisService
             || string.IsNullOrWhiteSpace(request.WorkerId)
             || request.WorkerId.Length > 100
             || string.IsNullOrWhiteSpace(request.CorrelationId)
-            || request.CorrelationId.Length > 128)
+            || request.CorrelationId.Length > 128
+            || request.CandidateId == Guid.Empty
+            || request.CandidateId.HasValue && (request.MaximumCandidates != 1 || request.MaximumConcurrency != 1))
             throw new ArgumentException("The deep-analysis batch request is invalid.", nameof(request));
     }
 

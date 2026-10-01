@@ -235,7 +235,7 @@ public sealed class DeterministicFounderProfileParser : IFounderProfileParser
     private static readonly string[] ProtectedPhrases = [" years old", "my wife", "my husband", "my children", "my kids", "i am a woman", "i am a man", "my religion"];
     private static readonly string[] KnownFields = ["location", "timezone", "time zone", "technical", "commitment", "idea", "roles", "skills", "strengths", "about", "introduction", "bio", "background", "career", "education", "building", "leadership", "startup", "problem", "customer", "solution", "traction", "progress", "validation", "looking for", "cofounder skills", "co-founder skills", "cofounder role", "co-founder role", "equity", "partnership", "industries", "industry", "interests", "last active", "activity"];
     /// <summary>Current deterministic parser version.</summary>
-    public const string CurrentVersion = "founder-profile-parser-1.0";
+    public const string CurrentVersion = "founder-profile-parser-1.1";
     /// <inheritdoc />
     public string Version => CurrentVersion;
 
@@ -285,7 +285,12 @@ public sealed class DeterministicFounderProfileParser : IFounderProfileParser
             return value is null ? [] : FounderProfileCanonicalizer.NormalizeSet(value.Split([',', ';', '\n', '|'], StringSplitOptions.RemoveEmptyEntries));
         }
 
-        string introduction = Sanitize(GetText("introduction", "introduction", "about", "bio", "intro") ?? capture.RawText, warnings);
+        string? structuredIntroduction = GetText("introduction", "introduction", "about", "bio", "intro");
+        string introduction = Sanitize(structuredIntroduction ?? capture.RawText, warnings);
+        if (structuredIntroduction is null && introduction.Length > 0)
+        {
+            evidence.Add(new("introduction", "visible-profile-text", Bound(introduction)));
+        }
         string? location = GetText("location", "location", "city", "region");
         string? timezone = GetText("timeZoneCompatibility", "timezone", "time zone", "availability timezone");
         string? technicalText = GetText("technicalStatus", "technical", "technical status", "technical background");
@@ -330,15 +335,31 @@ public sealed class DeterministicFounderProfileParser : IFounderProfileParser
             missing.Add("equity");
         }
 
+        TechnicalProfileStatus technicalStatus = ParseTechnical(technicalText, introduction);
+        if (technicalText is null && technicalStatus != TechnicalProfileStatus.Unknown)
+        {
+            evidence.Add(new("technicalStatus", "visible-profile-text", Bound(introduction)));
+        }
+
         int recognizedSections = fields.Keys.Count(IsKnownField) + labeled.Keys.Count(IsKnownField);
         int sectionCount = Math.Max(1, fields.Count + labeled.Count);
         int groupsFound = (introduction.Length > 0 ? 1 : 0) + (location is not null ? 1 : 0) + (problem is not null || startup is not null ? 1 : 0) + (roles.Length > 0 || technicalText is not null || desiredRole is not null ? 1 : 0);
         decimal ratio = Math.Clamp((decimal)recognizedSections / sectionCount, 0m, 1m);
         string normalizedRaw = FounderProfileCanonicalizer.NormalizeText(capture.RawText);
+        bool unstructuredFallback = groupsFound == 1
+            && recognizedSections == 0
+            && normalizedRaw.Length >= 200
+            && capture.ExtractionCompleteness >= 0.5m
+            && !string.IsNullOrWhiteSpace(capture.DisplayName)
+            && !string.Equals(capture.DisplayName, "Unknown founder profile", StringComparison.Ordinal);
+        if (unstructuredFallback)
+        {
+            warnings.Add("parser.unstructuredFallback");
+        }
         var healthReasons = new List<string>();
         if (normalizedRaw.Length < 20) healthReasons.Add("parser.visibleText.tooShort");
-        if (groupsFound < 2) healthReasons.Add("parser.requiredGroups.missing");
-        if (recognizedSections == 0) healthReasons.Add("parser.sections.unrecognized");
+        if (groupsFound < 2 && !unstructuredFallback) healthReasons.Add("parser.requiredGroups.missing");
+        if (recognizedSections == 0 && !unstructuredFallback) healthReasons.Add("parser.sections.unrecognized");
         if (capture.SourceAdapterVersion.Length is 0 or > 128) healthReasons.Add("parser.adapter.incompatible");
         bool healthy = healthReasons.Count == 0;
         if (!healthy)
@@ -354,7 +375,7 @@ public sealed class DeterministicFounderProfileParser : IFounderProfileParser
             FounderProfileCanonicalizer.NormalizeText(capture.DisplayName),
             NullIfEmpty(location),
             NullIfEmpty(timezone),
-            ParseTechnical(technicalText, introduction),
+            technicalStatus,
             ParseCommitment(commitmentText),
             ParseIdea(ideaText),
             roles,
@@ -420,15 +441,43 @@ public sealed class DeterministicFounderProfileParser : IFounderProfileParser
         foreach (JsonProperty property in element.EnumerateObject())
         {
             if (property.NameEquals("sections") || IsProtectedName(property.Name)) continue;
+            string fieldName = CanonicalizeFieldName(property.Name);
             IEnumerable<string> values = property.Value.ValueKind switch
             {
                 JsonValueKind.String => [property.Value.GetString() ?? string.Empty],
                 JsonValueKind.Array => property.Value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? string.Empty),
                 _ => [],
             };
-            if (!fields.TryGetValue(property.Name, out List<string>? target)) fields[property.Name] = target = [];
+            if (!fields.TryGetValue(fieldName, out List<string>? target)) fields[fieldName] = target = [];
             target.AddRange(values.Where(value => !string.IsNullOrWhiteSpace(value)));
         }
+    }
+
+    private static string CanonicalizeFieldName(string value)
+    {
+        string key = FounderProfileCanonicalizer.NormalizeText(value).ToLowerInvariant();
+        if (KnownFields.Contains(key, StringComparer.OrdinalIgnoreCase)) return key;
+        if (key.Contains("looking for", StringComparison.Ordinal)
+            || key.Contains("seeking", StringComparison.Ordinal)) return "looking for";
+        if (key.Contains("about me", StringComparison.Ordinal)
+            || key.Contains("introduction", StringComparison.Ordinal)
+            || key.Contains("biography", StringComparison.Ordinal)) return "about";
+        if (key.Contains("background", StringComparison.Ordinal)
+            || key.Contains("experience", StringComparison.Ordinal)) return "background";
+        if (key.Contains("location", StringComparison.Ordinal)
+            || key.Contains("where i", StringComparison.Ordinal)) return "location";
+        if (key.Contains("startup", StringComparison.Ordinal)
+            || key.Contains("company", StringComparison.Ordinal)
+            || key.Contains("venture", StringComparison.Ordinal)) return "startup";
+        if (key.Contains("problem", StringComparison.Ordinal)) return "problem";
+        if (key.Contains("customer", StringComparison.Ordinal)
+            || key.Contains("market", StringComparison.Ordinal)) return "customer";
+        if (key.Contains("solution", StringComparison.Ordinal)
+            || key.Contains("product", StringComparison.Ordinal)) return "solution";
+        if (key.Contains("traction", StringComparison.Ordinal)
+            || key.Contains("progress", StringComparison.Ordinal)
+            || key.Contains("validation", StringComparison.Ordinal)) return "traction";
+        return key;
     }
 
     private static Dictionary<string, string> ReadLabeledText(string rawText)

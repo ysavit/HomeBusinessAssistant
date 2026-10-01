@@ -24,6 +24,10 @@
 
   <ItemGroup>
     <Content Include="..\..\manifests\*.agent-manifest.json" Link="manifests\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Keep direct bin\Release launches complete. UseStaticFiles resolves from
+         the executable content root, so the normal build output needs the same
+         web assets that publish already carries. -->
+    <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

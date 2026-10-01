@@ -3,6 +3,8 @@ using System.Net.Sockets;
 using System.Text.Json;
 using FounderScout.Application;
 using HomeBusinessAssistant.Application.Configuration;
+using HomeBusinessAssistant.Application.Desktop;
+using HomeBusinessAssistant.Application.Management;
 using HomeBusinessAssistant.Application.Onboarding;
 using HomeBusinessAssistant.Application.Persistence;
 using HomeBusinessAssistant.Application.Scheduling;
@@ -14,6 +16,7 @@ using HomeBusinessAssistant.Infrastructure.Persistence.Repositories;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Playwright;
+using Moq;
 
 namespace HomeBusinessAssistant.Host.Tests;
 
@@ -21,11 +24,13 @@ internal sealed class Stage19AgentOnboardingBrowserSmokeTests
 {
     private static readonly AgentId SampleAgentId = AgentId.Parse("sample-business-agent");
     private static readonly string[] DefaultExtensions = [".txt", ".csv", ".json"];
+    private static readonly string[] PrimaryNavigation = ["Dashboard", "Founder Scout"];
+    private static readonly string[] FounderScoutNavigation = ["Overview", "Candidates", "Settings"];
     private static readonly string[] TextExtension = [".txt"];
 
     [Test]
     [Category("Stage20RenderedUi")]
-    public async Task FounderScoutSpecializedWizardIsPrivateAntiforgeryProtectedAndResponsive()
+    public async Task FounderScoutSimpleStartIsTheOnlyPrimaryWorkflowAndIsResponsive()
     {
         string repository = FindRepositoryRoot();
         string root = Path.Combine(Path.GetTempPath(), $"hba-stage20-rendered-{Guid.NewGuid():N}");
@@ -33,17 +38,21 @@ internal sealed class Stage19AgentOnboardingBrowserSmokeTests
         string agents = Path.Combine(root, "agents");
         Directory.CreateDirectory(agents);
         string url = $"http://127.0.0.1:{GetAvailablePort()}";
-        string personaMarker = $"private-persona-{Guid.NewGuid():N}";
-        Guid sessionId = await PrepareFreshSelectionAsync(repository, data, agents);
+        _ = await PrepareFreshSelectionAsync(repository, data, agents);
         HostBootstrapSettings settings = CreateSettings(repository, data, agents, url);
         try
         {
             await using HostRuntime runtime = await HostRuntime.CreateAsync(settings, HostLogFactory.Create(data));
-            IAgentOnboardingService selections = runtime.WebComposition.Management?.AgentOnboarding
-                ?? throw new InvalidOperationException("Agent onboarding composition is missing.");
-            AgentSelectionOverview overview = await selections.GetSelectionOverviewAsync(sessionId, "local-web");
-            _ = await selections.SaveChoicesAsync(sessionId, overview.Session.Revision, new HashSet<AgentId> { FounderScoutDefaults.AgentId }, "local-web");
-            HostWebComposition webOnly = runtime.WebComposition with { HostedServices = [] };
+            await runtime.InitializeAsync();
+            ManagementManualRunRequest? captured = null;
+            var commands = new Mock<IManagementCommandService>(MockBehavior.Strict);
+            commands.Setup(service => service.RunNowAsync(
+                    It.IsAny<ManagementManualRunRequest>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<ManagementManualRunRequest, CancellationToken>((request, _) => captured = request)
+                .ReturnsAsync(new OccurrenceDispatchResult(OccurrenceId.New(), true, false, true, 42, "runner.started"));
+            HostManagementComposition management = runtime.WebComposition.Management! with { Commands = commands.Object };
+            HostWebComposition webOnly = runtime.WebComposition with { HostedServices = [], Management = management };
             await using WebApplication application = HostApplication.Build(
                 ["--urls", url, "--contentRoot", Path.Combine(repository, "src", "HomeBusinessAssistant.Host")],
                 webOnly);
@@ -61,65 +70,106 @@ internal sealed class Stage19AgentOnboardingBrowserSmokeTests
             page.Console += (_, message) => { if (message.Type == "error") browserErrors.Add(message.Text); };
             page.PageError += (_, error) => browserErrors.Add(error);
 
-            IResponse? response = await page.GotoAsync($"{url}/Onboarding/FounderScout?sessionId={sessionId:D}&step=purpose", new() { WaitUntil = WaitUntilState.NetworkIdle });
-            string purpose = await page.Locator("body").InnerTextAsync();
-            int wizardStepCount = await page.Locator(".founder-wizard-nav a").CountAsync();
-            int antiforgeryStatus = await page.EvaluateAsync<int>($"async () => (await fetch('/Onboarding/FounderScout?handler=Review&sessionId={sessionId:D}&step=review', {{ method: 'POST' }})).status");
+            IResponse? response = await page.GotoAsync(
+                $"{url}/FounderScout",
+                new() { WaitUntil = WaitUntilState.NetworkIdle });
+            string body = await page.Locator("body").InnerTextAsync();
+            IReadOnlyList<string> primaryNavigation = await page.Locator("header.site-header nav a").AllTextContentsAsync();
+            IReadOnlyList<string> founderScoutNavigation = await page.Locator("nav.tabs a").AllTextContentsAsync();
+            string delay = await page.Locator("#DiscoveryDelaySeconds").InputValueAsync();
+            int passwordInputs = await page.Locator("input[type=password]").CountAsync();
+            int antiforgeryStatus = await page.EvaluateAsync<int>(
+                "async () => (await fetch('/FounderScout?handler=Start', { method: 'POST' })).status");
             Assert.Multiple(() =>
             {
                 Assert.That(response?.Status, Is.EqualTo(200));
                 Assert.That(antiforgeryStatus, Is.EqualTo(400));
-                Assert.That(wizardStepCount, Is.EqualTo(7));
-                Assert.That(purpose, Does.Contain("password, cookie, or session export"));
-                Assert.That(purpose, Does.Contain("no automatic invitation or message-sending command").IgnoreCase);
-                Assert.That(purpose, Does.Not.Contain(personaMarker));
+                Assert.That(primaryNavigation, Is.EqualTo(PrimaryNavigation));
+                Assert.That(founderScoutNavigation, Is.EqualTo(FounderScoutNavigation));
+                Assert.That(body, Does.Contain("Start Founder Scout"));
+                Assert.That(body, Does.Contain("enter your password only in the Startup School browser window"));
+                Assert.That(passwordInputs, Is.Zero);
+                Assert.That(delay, Is.EqualTo("5"));
             });
             browserErrors.Clear(); // The deliberate tokenless POST reports its expected HTTP 400 to the console.
-            await AssertFitsViewportAsync(page);
-            await page.ScreenshotAsync(new() { Path = Path.Combine(Path.GetTempPath(), "hba-stage20-qa-desktop.png"), FullPage = true });
-
-            await page.Locator("input[name='Form.LiveSource'][value='false']").CheckAsync();
-            await page.Locator("input[name='Form.DeepAnalysis'][value='false']").CheckAsync();
-            await ClickAndWaitAsync(page, AriaRole.Button, "Save and continue");
-            string account = await page.Locator("body").InnerTextAsync();
-            string? profileIdentifier = await page.Locator("input[readonly]").GetAttributeAsync("value");
-            Assert.Multiple(() =>
-            {
-                Assert.That(account, Does.Contain("disabled until headed authentication succeeds"));
-                Assert.That(profileIdentifier, Is.EqualTo("browser/primary-founder-account"));
-                Assert.That(account, Does.Not.Contain(data));
-            });
-            await ClickAndWaitAsync(page, AriaRole.Button, "Save account");
-            await ClickAndWaitAsync(page, AriaRole.Button, "Save source limits");
-            await page.GetByLabel("Display name", new() { Exact = true }).FillAsync(personaMarker);
-            await ClickAndWaitAsync(page, AriaRole.Button, "Save policy");
-            await ClickAndWaitAsync(page, AriaRole.Link, "Continue to checks");
+            await page.Locator("header.site-header nav").GetByRole(AriaRole.Link, new() { Name = "Dashboard", Exact = true }).ClickAsync();
             await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-            string checks = await page.Locator("body").InnerTextAsync();
+            bool dashboardHeadingVisible = await page.GetByRole(AriaRole.Heading, new() { Name = "Good work starts with a quiet system." }).IsVisibleAsync();
             Assert.Multiple(() =>
             {
-                Assert.That(checks, Does.Contain("may incur a small provider charge"));
-                Assert.That(checks, Does.Contain("Enter credentials only on the source site"));
-                Assert.That(checks, Does.Not.Contain(personaMarker));
-                Assert.That(checks, Does.Not.Contain(data));
-                Assert.That(checks, Does.Not.Contain("cookie=").IgnoreCase);
+                Assert.That(new Uri(page.Url).AbsolutePath, Is.EqualTo("/"));
+                Assert.That(dashboardHeadingVisible, Is.True);
+            });
+            await page.Locator("header.site-header nav").GetByRole(AriaRole.Link, new() { Name = "Founder Scout", Exact = true }).ClickAsync();
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            Assert.That(await page.Locator("nav.tabs a").AllTextContentsAsync(), Is.EqualTo(FounderScoutNavigation));
+            await page.Locator("#DiscoveryDelaySeconds").FillAsync("7");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Start Founder Scout" }).ClickAsync();
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            using JsonDocument arguments = JsonDocument.Parse(captured?.ArgumentsJson ?? "{}");
+            string statusText = await page.GetByRole(AriaRole.Status).InnerTextAsync();
+            Assert.Multiple(() =>
+            {
+                Assert.That(captured, Is.Not.Null);
+                Assert.That(captured!.CommandName, Is.EqualTo("start"));
+                Assert.That(arguments.RootElement.GetProperty("accountId").GetString(), Is.EqualTo(FounderScoutSimpleMode.BrowserAccountId));
+                Assert.That(arguments.RootElement.GetProperty("segmentId").GetString(), Is.EqualTo(FounderScoutSimpleMode.DiscoverySegmentId));
+                Assert.That(arguments.RootElement.GetProperty("discoveryDelaySeconds").GetInt32(), Is.EqualTo(7));
+                Assert.That(statusText, Does.Contain("discovery continues automatically"));
+            });
+            await AssertFitsViewportAsync(page);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(Path.GetTempPath(), "hba-founder-simple-start-desktop.png"), FullPage = true });
+
+            IResponse? settingsResponse = await page.GotoAsync(
+                $"{url}/FounderScout/Settings",
+                new() { WaitUntil = WaitUntilState.NetworkIdle });
+            string settingsBody = await page.Locator("body").InnerTextAsync();
+            string modelName = await page.Locator("#Form_ModelName").InputValueAsync();
+            string protectedKeyValue = await page.Locator("#openai-api-key").InputValueAsync();
+            await page.GotoAsync($"{url}/FounderScout/Candidates", new() { WaitUntil = WaitUntilState.NetworkIdle });
+            bool analyzeDisabled = await page.GetByRole(AriaRole.Button, new() { Name = "Complete AI setup first" }).IsDisabledAsync();
+            await page.GotoAsync($"{url}/FounderScout/Settings", new() { WaitUntil = WaitUntilState.NetworkIdle });
+            Assert.Multiple(() =>
+            {
+                Assert.That(settingsResponse?.Status, Is.EqualTo(200));
+                Assert.That(settingsBody, Does.Contain("Founder context and evaluation instructions"));
+                Assert.That(settingsBody, Does.Contain("The API cannot read ChatGPT Memory or old chats"));
+                Assert.That(modelName, Is.EqualTo("gpt-5.4-mini"));
+                Assert.That(protectedKeyValue, Is.Empty);
+                Assert.That(analyzeDisabled, Is.True);
+            });
+            await page.Locator("#Form_AdditionalContext").FillAsync("Copied local founder context for the focused settings test.");
+            await page.GetByRole(AriaRole.Button, new() { Name = "Save AI settings" }).ClickAsync();
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            string flashText = await page.GetByRole(AriaRole.Status).InnerTextAsync();
+            string savedContext = await page.Locator("#Form_AdditionalContext").InputValueAsync();
+            string savedProtectedKeyValue = await page.Locator("#openai-api-key").InputValueAsync();
+            Assert.Multiple(() =>
+            {
+                Assert.That(flashText, Does.Contain("AI settings were saved"));
+                Assert.That(savedContext, Does.Contain("Copied local founder context"));
+                Assert.That(savedProtectedKeyValue, Is.Empty);
             });
 
-            await ClickAndWaitAsync(page, AriaRole.Link, "Review setup");
-            string review = await page.Locator("body").InnerTextAsync();
+            const string testApiKey = "sk-test-never-render-this-value-1234567890";
+            await page.Locator("#openai-api-key").FillAsync(testApiKey);
+            await page.GetByRole(AriaRole.Button, new() { Name = "Protect API key" }).ClickAsync();
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            string protectedSettingsBody = await page.Locator("body").InnerTextAsync();
+            string reloadedProtectedKeyValue = await page.Locator("#openai-api-key").InputValueAsync();
+            await page.GotoAsync($"{url}/FounderScout/Candidates", new() { WaitUntil = WaitUntilState.NetworkIdle });
+            bool analyzeEnabled = await page.GetByRole(AriaRole.Button, new() { Name = "Analyze candidates now" }).IsEnabledAsync();
             Assert.Multiple(() =>
             {
-                Assert.That(review, Does.Contain("Capture and screen"));
-                Assert.That(review, Does.Contain("Ready for Stage 22 validation"));
-                Assert.That(review, Does.Contain("Not configured"));
-                Assert.That(review, Does.Not.Contain(personaMarker));
+                Assert.That(protectedSettingsBody, Does.Contain("API key was protected"));
+                Assert.That(protectedSettingsBody, Does.Not.Contain(testApiKey));
+                Assert.That(reloadedProtectedKeyValue, Is.Empty);
+                Assert.That(analyzeEnabled, Is.True);
             });
-            await ClickAndWaitAsync(page, AriaRole.Button, "Save review state");
-            Assert.That(await page.Locator("body").InnerTextAsync(), Does.Contain("agent is still disabled").IgnoreCase);
 
             await page.SetViewportSizeAsync(390, 844);
             await AssertFitsViewportAsync(page);
-            await page.ScreenshotAsync(new() { Path = Path.Combine(Path.GetTempPath(), "hba-stage20-qa-narrow.png"), FullPage = true });
+            await page.ScreenshotAsync(new() { Path = Path.Combine(Path.GetTempPath(), "hba-founder-simple-start-narrow.png"), FullPage = true });
             Assert.That(browserErrors, Is.Empty);
             await application.StopAsync();
         }
@@ -128,12 +178,6 @@ internal sealed class Stage19AgentOnboardingBrowserSmokeTests
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
-    }
-
-    private static async Task ClickAndWaitAsync(IPage page, AriaRole role, string name)
-    {
-        await page.GetByRole(role, new() { Name = name, Exact = true }).ClickAsync();
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
     }
 
     [Test]
@@ -595,7 +639,7 @@ internal sealed class Stage19AgentOnboardingBrowserSmokeTests
     private static async Task AssertFitsViewportAsync(IPage page)
     {
         bool fits = await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth + 1");
-        Assert.That(fits, Is.True, "The onboarding document overflows the viewport.");
+        Assert.That(fits, Is.True, "The rendered document overflows the viewport.");
     }
 
     private static int GetAvailablePort()

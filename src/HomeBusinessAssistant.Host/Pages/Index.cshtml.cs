@@ -1,9 +1,11 @@
 using System.Text.Json;
+using FounderScout.Application;
 using HomeBusinessAssistant.Application.Desktop;
 using HomeBusinessAssistant.Application.Management;
 using HomeBusinessAssistant.Application.Onboarding;
 using HomeBusinessAssistant.Application.Operations;
 using HomeBusinessAssistant.Application.Persistence;
+using HomeBusinessAssistant.Domain.Agents;
 using HomeBusinessAssistant.Domain.Audit;
 using HomeBusinessAssistant.Host.Dashboard;
 using Microsoft.AspNetCore.Mvc;
@@ -65,7 +67,7 @@ public sealed class IndexModel(
     /// <summary>Loads current local platform state.</summary>
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
-        if (management.Onboarding is not null)
+        if (!FounderScoutSimpleMode.Enabled && management.Onboarding is not null)
         {
             Onboarding = await management.Onboarding.GetEntryDecisionAsync("local-web", cancellationToken).ConfigureAwait(false);
             if (Onboarding.RedirectToOnboarding)
@@ -91,7 +93,11 @@ public sealed class IndexModel(
         }
         if (management.AgentOnboarding is not null)
         {
-            AgentOnboarding = await management.AgentOnboarding.GetDashboardStatusAsync(cancellationToken).ConfigureAwait(false);
+            AgentOnboardingDashboardStatus status = await management.AgentOnboarding.GetDashboardStatusAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<AgentId> pending = FounderScoutSimpleMode.Enabled
+                ? status.PendingAgentIds.Where(id => id != FounderScoutDefaults.AgentId).ToArray()
+                : status.PendingAgentIds;
+            AgentOnboarding = new(pending.Count, pending);
         }
         if (management.Operations is not null)
         {

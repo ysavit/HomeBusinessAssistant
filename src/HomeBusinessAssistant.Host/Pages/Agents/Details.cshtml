@@ -4,17 +4,26 @@
     ViewData["Title"] = Model.Detail?.Agent.Definition.DisplayName ?? "Agent";
     var detail = Model.Detail!;
     bool manualConflict = detail.Agent.ActiveRunId.HasValue && detail.Agent.Definition.DefaultConcurrencyPolicy == HomeBusinessAssistant.Domain.Agents.ConcurrencyPolicy.Forbid;
+    bool isFounderScout = detail.Agent.Definition.Id.Value == "founder-scout";
 }
 
 <header class="page-header">
     <div><p class="eyebrow">Installed agent · @detail.Agent.Definition.Id.Value</p><h1>@detail.Agent.Definition.DisplayName</h1><p>@detail.Agent.Definition.Description</p></div>
     <div class="page-actions">
-        <form method="post" asp-page-handler="Setup"><input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><button class="secondary">@(Model.IsOnboardingPending ? "Set up" : "Run setup again")</button></form>
-        <a class="button-link primary" asp-page="/Agents/Configuration" asp-route-id="@detail.Agent.Definition.Id.Value">Edit configuration</a>
-        <form method="post" asp-page-handler="SetEnabled" data-confirm="@(detail.Agent.Definition.Enabled ? "Disable this agent? Active runs will not be terminated." : "Enable this agent?")">
-            <input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><input type="hidden" name="enabled" value="@(!detail.Agent.Definition.Enabled)" />
-            <button class="@(detail.Agent.Definition.Enabled ? "danger" : "secondary")">@(detail.Agent.Definition.Enabled ? "Disable" : "Enable")</button>
-        </form>
+        @if (isFounderScout)
+        {
+            <a class="button-link primary" asp-page="/FounderScout/Index">Open Founder Scout</a>
+            <a class="button-link secondary" asp-page="/Agents/Configuration" asp-route-id="founder-scout">View settings</a>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="Setup"><input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><button class="secondary">@(Model.IsOnboardingPending ? "Set up" : "Run setup again")</button></form>
+            <a class="button-link primary" asp-page="/Agents/Configuration" asp-route-id="@detail.Agent.Definition.Id.Value">Edit configuration</a>
+            <form method="post" asp-page-handler="SetEnabled" data-confirm="@(detail.Agent.Definition.Enabled ? "Disable this agent? Active runs will not be terminated." : "Enable this agent?")">
+                <input type="hidden" name="id" value="@detail.Agent.Definition.Id.Value" /><input type="hidden" name="enabled" value="@(!detail.Agent.Definition.Enabled)" />
+                <button class="@(detail.Agent.Definition.Enabled ? "danger" : "secondary")">@(detail.Agent.Definition.Enabled ? "Disable" : "Enable")</button>
+            </form>
+        }
     </div>
 </header>
 
@@ -42,7 +51,7 @@
             </div>
         </section>
         <section id="configuration" class="panel">
-            <div class="panel-heading"><h2>Configuration history</h2><a asp-page="/Agents/Configuration" asp-route-id="@detail.Agent.Definition.Id.Value">Open editor</a></div>
+            <div class="panel-heading"><h2>Configuration history</h2><a asp-page="/Agents/Configuration" asp-route-id="@detail.Agent.Definition.Id.Value">@(isFounderScout ? "View settings" : "Open editor")</a></div>
             @if (detail.ConfigurationHistory.Count == 0) { <p class="empty-state">No configuration revisions.</p> }
             else { <ul class="compact-list">@foreach (var revision in detail.ConfigurationHistory.Take(8)) { <li><strong><a asp-page="/Agents/ConfigurationHistory" asp-route-id="@detail.Agent.Definition.Id.Value" asp-route-revisionId="@revision.Id">Revision @revision.RevisionNumber</a></strong><span>@revision.CreatedAtUtc.ToLocalTime().ToString("g") · @revision.ChangeSummary</span></li> }</ul> }
         </section>

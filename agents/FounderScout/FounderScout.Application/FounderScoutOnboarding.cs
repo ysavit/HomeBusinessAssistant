@@ -218,7 +218,7 @@ public sealed class FounderScoutOnboardingAdapter(
             prerequisites,
             [new("api-key", "Provider API key", FounderScoutDefaults.ApiKeyReference, deep, secretExists, secretExists ? "secret.configured" : "secret.missing")],
             new("diagnose", "{}", false),
-            new(context.Definition.SupportsScheduling, context.Definition.SupportsManualRun, context.Definition.RequiresInteractiveUserSession, ["authenticate", "diagnose", "discover", "analyze", "run"]),
+            new(context.Definition.SupportsScheduling, context.Definition.SupportsManualRun, context.Definition.RequiresInteractiveUserSession, ["start", "authenticate", "diagnose", "discover", "analyze", "run"]),
             reviewed ? "Ready for a guided diagnostic; the agent remains unchanged." : "Specialized setup is incomplete.");
     }
 

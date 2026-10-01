@@ -14,6 +14,7 @@ using HomeBusinessAssistant.Infrastructure.Persistence;
 using HomeBusinessAssistant.Infrastructure.Persistence.Repositories;
 using HomeBusinessAssistant.Runner;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 
 namespace FounderScout.Tests;
 
@@ -26,6 +27,47 @@ internal sealed class FounderScoutRunnerIntegrationTests
     private static readonly string[] DeepEvaluationRoles = ["operations", "sales", "domain"];
     private static readonly string[] DeepEvaluationIndustries = ["local commerce", "operations"];
     private static readonly string[] Stage16Traction = ["Completed 50 customer interviews."];
+
+    [Test]
+    public async Task ProviderRateLimitStopsBatchAfterOneClaimAndPreservesPendingCandidate()
+    {
+        await using FounderScoutRunnerFixture fixture = await FounderScoutRunnerFixture.CreateAsync(enableDeepEvaluation: true);
+        RunnerExecution imported = await fixture.ExecuteAsync("import", JsonSerializer.Serialize(new { inputPath = fixture.FixturePath }, JsonOptions));
+        RunnerExecution screened = await fixture.ExecuteAsync("analyze", JsonSerializer.Serialize(new { phase = "screen", max = 20 }, JsonOptions));
+        Assert.That(imported.ExitCode, Is.Zero, imported.Diagnostic);
+        Assert.That(screened.ExitCode, Is.Zero, screened.Diagnostic);
+
+        FounderScoutRepository repository = fixture.CreateFounderRepository();
+        FounderScoutConfiguration configuration = fixture.GetFounderConfiguration() with
+        {
+            Analysis = fixture.GetFounderConfiguration().Analysis with { MaximumRetries = 1, MaximumConcurrency = 1 },
+        };
+        FounderEvaluationPrompt prompt = await FounderEvaluationPromptCatalog.LoadAsync(
+            Path.Combine(fixture.AgentDirectory, "founder-scout", "prompts"));
+        var provider = new Mock<IFounderEvaluationModelClient>();
+        provider.Setup(client => client.EvaluateAsync(It.IsAny<FounderEvaluationRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FounderModelException(
+                FounderModelFailureKind.Transient,
+                "analysis.provider.throttled",
+                "The provider throttled the request."));
+        var service = new FounderDeepAnalysisService(
+            repository, repository, repository, repository, repository, repository,
+            provider.Object, TimeProvider.System);
+
+        FounderDeepAnalysisBatchResult result = await service.AnalyzeAsync(new(
+            50, 1, "rate-limit-test", Guid.NewGuid(), "rate-limit-test", configuration, prompt));
+        CandidatePage pending = await repository.QueryRankedAsync(new([CandidateStatus.PendingAnalysis], null, 0, 100));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Claimed, Is.EqualTo(1));
+            Assert.That(result.ProviderRequests, Is.EqualTo(1));
+            Assert.That(result.AttentionRequired, Is.True);
+            Assert.That(result.AttentionCode, Is.EqualTo("analysis.provider.throttled"));
+            Assert.That(pending.TotalCount, Is.GreaterThan(0));
+        });
+        provider.Verify(client => client.EvaluateAsync(It.IsAny<FounderEvaluationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 
     [Test]
     public async Task RequiredFixtureSmokeRunsThroughRunnerAndCorrelatesSeparateDatabases()
@@ -306,6 +348,75 @@ internal sealed class FounderScoutRunnerIntegrationTests
     }
 
     [Test]
+    public async Task StartCapturesAndScreensWithoutCallingAiEvenWhenProviderIsConfigured()
+    {
+        await using StartupSchoolFixtureServer server = StartupSchoolFixtureServer.Start(profileCount: 2);
+        await using FounderScoutRunnerFixture fixture = await FounderScoutRunnerFixture.CreateAsync(
+            server.CreateOptions(),
+            enableDeepEvaluation: true,
+            discoveryLimit: 2);
+
+        RunnerExecution started = await fixture.ExecuteAsync(
+            "start",
+            JsonSerializer.Serialize(new
+            {
+                accountId = "fixture-account",
+                segmentId = "default",
+                discoveryDelaySeconds = 1,
+            }, JsonOptions));
+        FounderScoutDomainCounts counts = await fixture.CreateFounderRepository().GetCountsAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started.ExitCode, Is.Zero, started.Diagnostic);
+            Assert.That(started.Run.Status, Is.EqualTo(AgentRunStatus.Completed));
+            Assert.That(started.Run.SummaryJson, Does.Contain("\"result\":\"Captured\""));
+            Assert.That(started.Run.SummaryJson, Does.Contain("\"candidatesStored\":true"));
+            Assert.That(started.Run.SummaryJson, Does.Contain("\"noAiCalls\":true"));
+            Assert.That(counts.Candidates, Is.EqualTo(2));
+            Assert.That(counts.Snapshots, Is.EqualTo(2));
+            Assert.That(counts.ScreeningDecisions, Is.EqualTo(2));
+            Assert.That(counts.Evaluations, Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task AnalyzeCandidateRefreshesOnlySelectedFixtureProfileAndRunsAi()
+    {
+        await using StartupSchoolFixtureServer server = StartupSchoolFixtureServer.Start(profileCount: 2);
+        await using FounderScoutRunnerFixture fixture = await FounderScoutRunnerFixture.CreateAsync(
+            server.CreateOptions(), enableDeepEvaluation: true, discoveryLimit: 2);
+        RunnerExecution started = await fixture.ExecuteAsync("start", JsonSerializer.Serialize(new
+        {
+            accountId = "fixture-account",
+            segmentId = "default",
+            discoveryDelaySeconds = 1,
+        }, JsonOptions));
+        FounderScoutRepository repository = fixture.CreateFounderRepository();
+        Candidate[] candidates = (await repository.QueryRankedAsync(new(null, null, 0, 10))).Items.ToArray();
+        Guid selectedId = candidates[1].Id;
+        Guid otherId = candidates[0].Id;
+
+        RunnerExecution analyzed = await fixture.ExecuteAsync("analyze-candidate", JsonSerializer.Serialize(new { candidateId = selectedId }, JsonOptions));
+        RunnerExecution repeated = await fixture.ExecuteAsync("analyze-candidate", JsonSerializer.Serialize(new { candidateId = selectedId }, JsonOptions));
+        Candidate? selected = await ((ICandidateRepository)repository).GetAsync(selectedId);
+        Candidate? other = await ((ICandidateRepository)repository).GetAsync(otherId);
+        FounderScoutDomainCounts counts = await repository.GetCountsAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(started.ExitCode, Is.Zero, started.Diagnostic);
+            Assert.That(analyzed.ExitCode, Is.Zero, analyzed.Diagnostic);
+            Assert.That(analyzed.Run.Status, Is.EqualTo(AgentRunStatus.Completed));
+            Assert.That(repeated.ExitCode, Is.Zero, repeated.Diagnostic);
+            Assert.That(repeated.Run.Status, Is.EqualTo(AgentRunStatus.Completed));
+            Assert.That(selected?.LatestEvaluationId, Is.Not.Null);
+            Assert.That(other?.LatestEvaluationId, Is.Null);
+            Assert.That(counts.Evaluations, Is.EqualTo(2));
+        });
+    }
+
+    [Test]
     public async Task BrowserDiscoverySmokeRunsTwentyProfilesResumesKnownProfilesAndReleasesProfileLease()
     {
         await using StartupSchoolFixtureServer server = StartupSchoolFixtureServer.Start();
@@ -425,6 +536,9 @@ internal sealed class FounderScoutRunnerIntegrationTests
         public string RootPath => root;
         public AssistantDatabase CentralDatabase => centralDatabase;
         public FounderScoutDatabase FounderDatabase => founderDatabase;
+        public FounderScoutConfiguration GetFounderConfiguration() =>
+            JsonSerializer.Deserialize<FounderScoutConfiguration>(configuration.CurrentRevision.CanonicalConfigurationJson, JsonOptions)
+            ?? throw new InvalidOperationException("The Founder Scout test configuration is invalid.");
 
         public static async ValueTask<FounderScoutRunnerFixture> CreateAsync(
             StartupSchoolSourceOptions? sourceOptions = null,

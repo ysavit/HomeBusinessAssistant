@@ -4,32 +4,155 @@
     ViewData["Title"] = "Founder Scout";
 }
 
-<header class="page-header"><div><p class="eyebrow">Local founder review workspace</p><h1>Founder Scout</h1><p>Move from durable discovery to evidence-led review, a manual planning queue, and recorded outcomes. Invitations always stay in your hands.</p></div><div class="page-actions"><form method="post" asp-page-handler="Discover"><button class="secondary">Run discovery</button></form><form method="post" asp-page-handler="Analyze"><button class="secondary">Analyze pending</button></form><form method="post" asp-page-handler="Reports"><button class="primary">Regenerate reports</button></form></div></header>
+<header class="page-header">
+    <div>
+        <p class="eyebrow">Simple local founder discovery</p>
+        <h1>Founder Scout</h1>
+        <p>Start one safe run. If sign-in is required, Founder Scout opens the official Startup School page and continues automatically after you finish.</p>
+    </div>
+</header>
+
 <partial name="_Tabs" />
 
-@if (Model.Attention is not null) { <p class="empty-state attention-text">@Model.Attention</p> }
+<section class="founder-start-card" aria-labelledby="start-founder-scout">
+    <div>
+        <p class="eyebrow">Ready when you are</p>
+        <h2 id="start-founder-scout">Start Founder Scout</h2>
+        <p>Founder Scout explores profiles one at a time and saves each result locally before any optional processing.</p>
+        <p class="field-help"><strong>AI is not used by Start:</strong> a prompt or provider failure cannot prevent a retrieved profile from appearing under Candidates. Run evaluation from <a asp-page="/FounderScout/Candidates/Index">Candidates</a>.</p>
+        <p class="field-help"><strong>Password safety:</strong> enter your password only in the Startup School browser window. This app never asks for, receives, or stores it.</p>
+    </div>
+    <form method="post" asp-page-handler="Start" class="founder-start-form">
+        <div asp-validation-summary="ModelOnly"></div>
+        <div>
+            <label asp-for="DiscoveryDelaySeconds">Delay between profiles (seconds)</label>
+            <input asp-for="DiscoveryDelaySeconds" type="number" min="1" max="60" step="1" inputmode="numeric" />
+            <span asp-validation-for="DiscoveryDelaySeconds"></span>
+            <p class="field-help">Use 5 seconds for a normal run. Allowed range: 1–60 seconds.</p>
+        </div>
+        <button class="primary founder-start-button" type="submit" disabled="@Model.IsRunActive">@(Model.IsRunActive ? "Founder Scout is running" : "Start Founder Scout")</button>
+    </form>
+</section>
+
+<section class="panel founder-run-status" role="region" aria-label="Founder Scout run status" aria-live="polite" data-auto-refresh-seconds="@(Model.IsRunActive ? "3" : null)">
+    @if (Model.IsRunActive && Model.LatestRun is not null)
+    {
+        <div class="panel-heading"><h2>Running now</h2><span class="pill positive">@Model.LatestRun.Run.Status</span></div>
+        @if (Model.IsAnalysisRun)
+        {
+            <p>Evaluating stored candidates with OpenAI one at a time. Each completed result is saved locally. This page refreshes every 3 seconds.</p>
+        }
+        else
+        {
+            <p>Browsing Startup School one profile at a time. Each valid profile is saved before screening. This page refreshes every 3 seconds.</p>
+        }
+        @if (Model.RunProgress?.Percentage is double percentage)
+        {
+            <progress class="run-progress" max="100" value="@percentage" aria-label="Founder Scout progress">@percentage.ToString("0")%</progress>
+        }
+        else
+        {
+            <progress class="run-progress" aria-label="Founder Scout is working">Working</progress>
+        }
+        <div class="run-progress-facts" aria-label="Live Founder Scout progress">
+            <div><span>Saved candidates</span><strong>@(Model.Dashboard?.Candidates ?? 0)</strong></div>
+            @if (Model.IsAnalysisRun)
+            {
+                <div><span>Pending AI analysis</span><strong>@(Model.Dashboard?.PendingAnalysis ?? 0)</strong></div>
+            }
+            else
+            {
+                <div><span>Pending screening</span><strong>@(Model.Dashboard?.PendingScreening ?? 0)</strong></div>
+            }
+            @if (Model.RunProgress is { Current: long current, Total: long total })
+            {
+                <div><span>Current batch</span><strong>@current / @total</strong></div>
+            }
+        </div>
+        <p><strong>Current step:</strong> @(Model.RunProgress?.Message ?? "The Runner is starting Founder Scout.")</p>
+        <p class="supporting">Started @Model.LatestRun.Run.StartedAtUtc.ToLocalTime().ToString("g") · Last heartbeat @(Model.LatestRun.Run.LastHeartbeatAtUtc?.ToLocalTime().ToString("T") ?? "starting")</p>
+        @if (Model.CanStopRun)
+        {
+            <form method="post" asp-page-handler="Stop" class="inline-actions" data-confirm="Stop the current Founder Scout run? Profiles already saved will remain available.">
+                <input type="hidden" name="runId" value="@Model.LatestRun.Run.Id.Value" />
+                <button type="submit" class="danger">Stop current run</button>
+                <span class="supporting">Pause/resume is not supported yet. Stop preserves candidates already saved.</span>
+            </form>
+        }
+        else
+        {
+            <p class="supporting">Stop becomes available as soon as the Runner starts the process. Pause/resume is not supported yet.</p>
+        }
+    }
+    else if (Model.LatestRun is not null)
+    {
+        <div class="panel-heading"><h2>Not running</h2><span class="pill muted">Last run: @Model.LatestRun.Run.Status</span></div>
+        <p>@(Model.LatestRun.Run.SummaryText ?? "Press Start Founder Scout to begin a new discovery run.")</p>
+        <p class="supporting">Start uses deterministic capture and screening. AI evaluation and introduction drafts are an explicit, separate action under <a asp-page="/FounderScout/Candidates/Index">Candidates</a>.</p>
+    }
+    else
+    {
+        <div class="panel-heading"><h2>Not running</h2></div>
+        <p>Press Start Founder Scout to begin the first discovery run.</p>
+    }
+</section>
+
+@if (Model.Attention is not null)
+{
+    <p class="empty-state attention-text">@Model.Attention</p>
+}
 else if (Model.Dashboard is not null)
 {
-    <section class="manual-notice"><strong>Manual invitation boundary</strong><span>This workspace drafts, validates, copies, and records. It has no route or action that sends a message.</span></section>
     <section class="facts-strip" aria-label="Founder Scout status">
         <div class="fact"><span>Candidates</span><strong>@Model.Dashboard.Candidates</strong></div>
         <div class="fact"><span>New / updated</span><strong>@Model.Dashboard.NewOrUpdated</strong></div>
-        <div class="fact"><span>Pending analysis</span><strong>@Model.Dashboard.PendingAnalysis</strong></div>
-        <div class="fact"><span>Drafts ready</span><strong>@Model.Dashboard.DraftsReady</strong></div>
-        <div class="fact"><span>Primary / reserve</span><strong>@Model.Dashboard.PrimaryQueue / @Model.Dashboard.ReserveQueue</strong></div>
-        <div class="fact"><span>Attention</span><strong>@Model.Dashboard.AttentionItems</strong></div>
+        <div class="fact"><span>Pending screening</span><strong>@Model.Dashboard.PendingScreening</strong></div>
+        <div class="fact"><span>Pending AI analysis</span><strong>@Model.Dashboard.PendingAnalysis</strong></div>
+        <div class="fact"><span>Needs attention</span><strong>@Model.Dashboard.AttentionItems</strong></div>
     </section>
-    <div class="content-grid">
-        <div class="stack">
-            <section class="table-shell"><div class="panel panel-heading"><div><h2>Invitation priority</h2><span class="supporting">Stable order: priority, confidence, activity, name, ID.</span></div><a asp-page="/FounderScout/Candidates/Index">Review all</a></div>
-                @if (Model.TopCandidates.Count == 0) { <p class="empty-state">No evaluated candidates yet. Run discovery, then analyze captured profiles.</p> }
-                else { <div class="table-scroll"><table><thead><tr><th>Rank</th><th>Candidate</th><th>Quality</th><th>Fit</th><th>Confidence</th><th>Priority</th><th>State</th></tr></thead><tbody>@foreach (var item in Model.TopCandidates) { <tr><td class="rank-cell">@item.Rank</td><td><a asp-page="/FounderScout/Candidates/Details" asp-route-id="@item.CandidateId">@item.DisplayName</a><span class="supporting">@item.Recommendation</span></td><td>@item.FounderQualityScore?.ToString("0.0")</td><td>@item.OurFitScore?.ToString("0.0")</td><td>@item.Confidence?.ToString("0.00")</td><td><strong>@item.InvitationPriority?.ToString("0.0")</strong></td><td><span class="pill @(item.NeedsManualReview ? "attention" : "muted")">@item.Status</span></td></tr> }</tbody></table></div> }
-            </section>
-            <section class="table-shell"><div class="panel panel-heading"><div><h2>Recent agent work</h2><span class="supporting">Discovery, analysis, and report occurrences launched through Runner.</span></div><a asp-page="/Runs/Index" asp-route-agentId="founder-scout">All runs</a></div>@if (Model.RecentRuns.Count == 0) { <p class="empty-state">No Founder Scout runs recorded yet.</p> } else { <div class="table-scroll"><table><thead><tr><th>Command</th><th>Status</th><th>Due</th><th>Attempt</th></tr></thead><tbody>@foreach (var run in Model.RecentRuns) { <tr><td><a asp-page="/Runs/Details" asp-route-id="@run.Run.Id.Value">@run.CommandName</a></td><td>@run.Run.Status</td><td>@run.DueAtUtc.ToLocalTime().ToString("g")</td><td>@run.AttemptNumber</td></tr> }</tbody></table></div> }</section>
+
+    <section class="table-shell">
+        <div class="panel panel-heading">
+            <div>
+                <h2>Recently saved candidates</h2>
+                <span class="supporting">Newest retrieved profiles appear first, including captures that have not been scored.</span>
+            </div>
+            <a asp-page="/FounderScout/Candidates/Index">View candidates</a>
         </div>
-        <aside class="stack">
-            <section class="panel"><div class="panel-heading"><h2>Attention rail</h2><span class="pill @(Model.Dashboard.AttentionItems > 0 ? "attention" : "positive")">@Model.Dashboard.AttentionItems</span></div><ul class="compact-list"><li><strong>@Model.Dashboard.DraftsNeedReview drafts</strong><span class="supporting">Need a human review or revision.</span></li><li><strong>@Model.Dashboard.PendingScreening profiles</strong><span class="supporting">Await deterministic screening.</span></li>@foreach (var account in Model.Dashboard.Accounts.Where(account => account.LastErrorReasonCode is not null || account.SessionStatus.ToString() != "Healthy")) { <li><strong>@account.DisplayName</strong><span class="supporting">@account.SessionStatus · @(account.LastErrorReasonCode ?? "authentication attention")</span></li> }</ul></section>
-            <section class="panel"><div class="panel-heading"><h2>Latest reports</h2><a asp-page="/FounderScout/Operations/Index">All reports</a></div>@if (Model.Dashboard.LatestReports.Count == 0) { <p class="supporting">No reports generated yet.</p> } else { <ul class="compact-list">@foreach (var report in Model.Dashboard.LatestReports.Take(5)) { <li><strong>@report.ReportType · @report.Format</strong><span class="supporting">@report.CreatedAtUtc.ToLocalTime().ToString("g") · @report.RowCount rows</span></li> }</ul> }</section>
-        </aside>
-    </div>
+        @if (Model.TopCandidates.Count == 0)
+        {
+            <p class="empty-state">No candidates yet. Start Founder Scout and complete Startup School sign-in if prompted.</p>
+        }
+        else
+        {
+            <div class="table-scroll">
+                <table>
+                    <thead><tr><th>Rank</th><th>Candidate</th><th>Quality</th><th>Fit</th><th>Confidence</th><th>Priority</th><th>State</th></tr></thead>
+                    <tbody>
+                    @foreach (var item in Model.TopCandidates)
+                    {
+                        <tr><td class="rank-cell">@item.Rank</td><td><a class="candidate-name-link" asp-page="/FounderScout/Candidates/Details" asp-route-id="@item.CandidateId"><strong>@item.DisplayName</strong></a><span class="supporting">@(item.Recommendation ?? "Saved locally")</span></td><td>@item.FounderQualityScore?.ToString("0.0")</td><td>@item.OurFitScore?.ToString("0.0")</td><td>@item.Confidence?.ToString("0.00")</td><td><strong>@item.InvitationPriority?.ToString("0.0")</strong></td><td><span class="pill @(item.NeedsManualReview ? "attention" : "muted")">@item.Status</span></td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="panel founder-run-history" aria-labelledby="recent-work">
+        <div class="panel-heading"><h2 id="recent-work">Recent work</h2></div>
+        @if (Model.RecentRuns.Count == 0)
+        {
+            <p class="supporting">No Founder Scout runs have been recorded yet.</p>
+        }
+        else
+        {
+            <ul class="compact-list">
+                @foreach (var run in Model.RecentRuns.Take(5))
+                {
+                    <li><strong>@run.CommandName · @run.Run.Status</strong><span class="supporting">@run.DueAtUtc.ToLocalTime().ToString("g")</span>@if (!string.IsNullOrWhiteSpace(run.Run.SummaryText)) { <span class="supporting">@run.Run.SummaryText</span> }</li>
+                }
+            </ul>
+        }
+    </section>
 }

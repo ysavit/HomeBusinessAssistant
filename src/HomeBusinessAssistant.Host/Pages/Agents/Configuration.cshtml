@@ -1,19 +1,71 @@
 @page "/Agents/{id}/configuration"
 @model HomeBusinessAssistant.Host.Pages.Agents.ConfigurationModel
+@using global::FounderScout.Application
 @using global::WakeRemote.Application
 @{
-    ViewData["Title"] = $"{Model.Agent?.DisplayName} configuration";
+    ViewData["Title"] = Model.IsFounderScout ? "Founder Scout settings" : $"{Model.Agent?.DisplayName} configuration";
+    FounderScoutConfiguration? founderSettings = Model.FounderScoutSettings;
+    StartupSchoolSourceOptions? founderSource = founderSettings?.StartupSchool;
+    FounderScoutProcessingSettings? founderProcessing = founderSettings?.Processing;
 }
 
 <header class="page-header">
-    <div><p class="eyebrow">Validated configuration · immutable revisions</p><h1>@Model.Agent?.DisplayName</h1><p>Revision @Model.Form.ExpectedRevisionNumber. Concurrent edits are rejected using both revision number and hash.</p></div>
+    <div><p class="eyebrow">@(Model.IsFounderScout ? "Code-owned simple mode" : "Validated configuration · immutable revisions")</p><h1>@Model.Agent?.DisplayName</h1><p>@(Model.IsFounderScout ? "These are the effective Founder Scout settings. They are intentionally read-only for now." : $"Revision {Model.Form.ExpectedRevisionNumber}. Concurrent edits are rejected using both revision number and hash.")</p></div>
     <a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@Model.Form.AgentId">Back to agent</a>
 </header>
 
-<nav class="tabs" aria-label="Configuration sections"><a href="#editor" aria-current="page">Editor</a><a href="#history">Revision history</a>@if (Model.IsFounderScout || Model.GenericSchema?.Fields.Any(field => field.IsSecretReference) == true) { <a href="#secret">Secret status</a> }</nav>
+<nav class="tabs" aria-label="Configuration sections"><a href="#editor" aria-current="page">@(Model.IsFounderScout ? "Effective settings" : "Editor")</a><a href="#history">Revision history</a>@if (Model.GenericSchema?.Fields.Any(field => field.IsSecretReference) == true) { <a href="#secret">Secret status</a> }</nav>
 
 <div class="content-grid">
     <div class="stack">
+        @if (Model.IsFounderScout && founderSettings is not null && founderSource is not null && founderProcessing is not null)
+        {
+            <section id="editor" class="panel stack">
+                <div class="panel-heading"><div><h2>Simple mode is active</h2><span class="supporting">Change these values in <code>FounderScoutDefaults.CreateConfiguration()</code>, then rebuild.</span></div><span class="pill positive">Read-only</span></div>
+                <section>
+                    <h3>Startup School browser</h3>
+                    <dl class="detail-list">
+                        <li><strong>Account</strong><span class="supporting">Startup School · <code>@FounderScoutSimpleMode.BrowserAccountId</code></span></li>
+                        <li><strong>Profile</strong><span class="supporting"><code>browser/@FounderScoutSimpleMode.BrowserAccountId</code> · dedicated local browser profile</span></li>
+                        <li><strong>Source</strong><span class="supporting">@founderSource.EntryUrl</span></li>
+                        <li><strong>Segment</strong><span class="supporting"><code>@FounderScoutSimpleMode.DiscoverySegmentId</code> · up to @FounderScoutSimpleMode.MaximumPages pages</span></li>
+                        <li><strong>Browser mode</strong><span class="supporting">One browser at a time · headed login · @(founderSource.HeadlessDiscovery ? "headless discovery" : "headed discovery")</span></li>
+                    </dl>
+                </section>
+                <section>
+                    <h3>Discovery limits</h3>
+                    <dl class="detail-list">
+                        <li><strong>Per run</strong><span class="supporting">@founderSettings.Discovery.MaxNewProfilesPerRun new · @founderSettings.Discovery.MaxViewedProfilesPerRun viewed · @TimeSpan.FromSeconds(founderSettings.Discovery.MaxRuntimeSeconds).TotalMinutes.ToString("0") minutes maximum</span></li>
+                        <li><strong>Daily</strong><span class="supporting">@founderSettings.Discovery.MaxNewProfilesPerDay new profiles maximum</span></li>
+                        <li><strong>Cooldown</strong><span class="supporting">@TimeSpan.FromSeconds(founderSettings.Discovery.CooldownAfterCompletionSeconds).TotalMinutes.ToString("0") minutes</span></li>
+                        <li><strong>Known-profile stop</strong><span class="supporting">Stop after @founderSettings.Discovery.StopAfterConsecutiveKnownProfiles consecutive known profiles</span></li>
+                        <li><strong>Safety stops</strong><span class="supporting">Login required, access denied, throttling, challenge/CAPTCHA, or parser-health failure</span></li>
+                    </dl>
+                </section>
+                <section>
+                    <h3>Processing and scoring</h3>
+                    <dl class="detail-list">
+                        <li><strong>Mode</strong><span class="supporting">Capture + deterministic screening; deep AI analysis is disabled</span></li>
+                        <li><strong>Parser</strong><span class="supporting">@founderProcessing.ParserVersion · @founderProcessing.RedactorVersion · @founderProcessing.RulesetVersion</span></li>
+                        <li><strong>Batch</strong><span class="supporting">@founderSettings.Analysis.BatchSize profiles · concurrency @founderSettings.Analysis.MaximumConcurrency</span></li>
+                        <li><strong>Thresholds</strong><span class="supporting">Strong @founderSettings.Ranking.StrongConnectThreshold · exploratory @founderSettings.Ranking.ExploratoryThreshold · monitor @founderSettings.Ranking.MonitorThreshold · confidence @founderSettings.Ranking.MinimumConfidence.ToString("0.00")</span></li>
+                        <li><strong>Priority weights</strong><span class="supporting">Fit @founderSettings.Priority.OurFitWeight.ToString("0%") · quality @founderSettings.Priority.FounderQualityWeight.ToString("0%") · confidence @founderSettings.Priority.ConfidenceWeight.ToString("0%") · activity @founderSettings.Priority.ActivityWeight.ToString("0%")</span></li>
+                    </dl>
+                </section>
+                <section>
+                    <h3>Privacy and retention</h3>
+                    <dl class="detail-list">
+                        <li><strong>Raw HTML</strong><span class="supporting">@(founderSource.StoreRawHtml ? "Retained" : "Not retained")</span></li>
+                        <li><strong>Retention</strong><span class="supporting">Raw profiles @founderSettings.Retention.RawProfileDays days · errors @founderSettings.Retention.ErrorArtifactDays days · reports @founderSettings.Retention.ReportDays days</span></li>
+                        <li><strong>AI/API key</strong><span class="supporting">Not required in simple mode; no key is compiled into the application</span></li>
+                        <li><strong>Invitations</strong><span class="supporting">Draft and review only; nothing is sent automatically</span></li>
+                    </dl>
+                </section>
+                <div class="page-actions"><a class="button-link primary" asp-page="/FounderScout/Index">Open Founder Scout</a><a class="button-link secondary" asp-page="/FounderScout/Operations/Index">Browser login and operations</a></div>
+            </section>
+        }
+        else
+        {
         <form id="editor" method="post" asp-page-handler="Save" class="form-shell">
             <input asp-for="Form.AgentId" type="hidden" />
             <input asp-for="Form.ExpectedRevisionNumber" type="hidden" />
@@ -150,6 +202,7 @@
                 <div class="page-actions" style="margin-top:1rem">@if (Model.GenericSchema?.SupportsGenericEditor != false) { <button type="submit" class="primary">Validate and save revision</button> }<a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@Model.Form.AgentId">Cancel</a></div>
             </section>
         </form>
+        }
 
         <section id="history" class="table-shell">
             <div class="panel panel-heading"><h2>Immutable revision history</h2></div>
@@ -158,21 +211,12 @@
     </div>
 
     <aside class="stack">
-        <section class="panel"><div class="panel-heading"><h2>Validation</h2></div><p class="supporting">Server-side schema and typed validation is authoritative. A no-op save reuses the current immutable revision and reports that nothing changed.</p></section>
+        <section class="panel"><div class="panel-heading"><h2>@(Model.IsFounderScout ? "How to change settings" : "Validation")</h2></div><p class="supporting">@(Model.IsFounderScout ? "Founder Scout configuration is intentionally compiled into code for this simple mode. Runtime status, candidates, and browser authentication remain durable; configuration inputs are not accepted by this page." : "Server-side schema and typed validation is authoritative. A no-op save reuses the current immutable revision and reports that nothing changed.")</p></section>
         @if (Model.IsFounderScout)
         {
             <section id="secret" class="panel">
-                <div class="panel-heading"><h2>AI secret</h2><span class="pill @(Model.SecretExists ? "positive" : "attention")">@(Model.SecretExists ? "Configured" : "Missing")</span></div>
-                <p class="supporting">The secret value is protected separately with Windows CurrentUser DPAPI. It is never read into this page or stored in configuration JSON.</p>
-                @if (Model.LastSecretChange is not null) { <p class="supporting">Last changed @Model.LastSecretChange.TimestampUtc.ToLocalTime().ToString("g") · <a asp-page="/Audit/Details" asp-route-id="@Model.LastSecretChange.Id">@Model.LastSecretChange.Action audit</a></p> } else { <p class="supporting">No append-only secret audit event is available yet.</p> }
-                <form method="post" asp-page-handler="SetSecret">
-                    <label for="secret-value">New secret value</label><input id="secret-value" name="secretValue" type="password" autocomplete="new-password" required />
-                    <button type="submit" class="secondary" style="margin-top:.65rem">Set protected secret</button>
-                </form>
-                @if (Model.SecretExists)
-                {
-                    <form method="post" asp-page-handler="DeleteSecret" data-confirm="Remove the protected AI secret for the current Windows user?" style="margin-top:.65rem"><button type="submit" class="danger">Delete secret</button></form>
-                }
+                <div class="panel-heading"><h2>AI provider</h2><span class="pill muted">Disabled</span></div>
+                <p class="supporting">Simple mode performs capture and deterministic screening without a provider request. No API key is required, rendered, or accepted here.</p>
             </section>
         }
         else if (Model.GenericSchema?.Fields.Any(field => field.IsSecretReference) == true)

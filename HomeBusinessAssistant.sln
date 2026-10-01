@@ -73,6 +73,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleBusinessAgent.Agent",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleBusinessAgent.Tests", "agents\SampleBusinessAgent\SampleBusinessAgent.Tests\SampleBusinessAgent.Tests.csproj", "{CF9ABA63-4620-457E-80E8-A6DD315AE64A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FounderScout.SimpleCli", "agents\FounderScout\FounderScout.SimpleCli\FounderScout.SimpleCli.csproj", "{A89520F4-A448-475A-A58B-CE7C689C2748}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -431,6 +433,18 @@ Global
 		{CF9ABA63-4620-457E-80E8-A6DD315AE64A}.Release|x64.Build.0 = Release|Any CPU
 		{CF9ABA63-4620-457E-80E8-A6DD315AE64A}.Release|x86.ActiveCfg = Release|Any CPU
 		{CF9ABA63-4620-457E-80E8-A6DD315AE64A}.Release|x86.Build.0 = Release|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Debug|x64.Build.0 = Debug|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Debug|x86.Build.0 = Debug|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Release|x64.ActiveCfg = Release|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Release|x64.Build.0 = Release|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Release|x86.ActiveCfg = Release|Any CPU
+		{A89520F4-A448-475A-A58B-CE7C689C2748}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -467,5 +481,6 @@ Global
 		{FAC34D7D-969E-444E-94F5-A5140EE1F3D6} = {B9691A9C-0EAA-B547-47F2-574C473EBA1C}
 		{C75EC492-C404-488B-ABAC-DE09ACC6B239} = {B9691A9C-0EAA-B547-47F2-574C473EBA1C}
 		{CF9ABA63-4620-457E-80E8-A6DD315AE64A} = {B9691A9C-0EAA-B547-47F2-574C473EBA1C}
+		{A89520F4-A448-475A-A58B-CE7C689C2748} = {AF7487F6-9B74-3A2E-AA7A-88C9E30C1622}
 	EndGlobalSection
 EndGlobal

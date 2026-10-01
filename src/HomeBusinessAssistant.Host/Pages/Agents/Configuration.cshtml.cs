@@ -46,6 +46,9 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
     /// <summary>Gets whether the current agent uses the Founder Scout typed adapter.</summary>
     public bool IsFounderScout => Form.AgentId == FounderScoutDefaults.AgentId.Value;
 
+    /// <summary>Gets the effective read-only Founder Scout simple-mode settings.</summary>
+    public FounderScoutConfiguration? FounderScoutSettings { get; private set; }
+
     /// <summary>Gets safe parsed schema metadata for an agent without a typed UI adapter.</summary>
     public GenericConfigurationSchema? GenericSchema { get; private set; }
 
@@ -56,6 +59,12 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
     /// <summary>Loads the current revision into typed fields.</summary>
     public async Task<IActionResult> OnGetAsync(string id, CancellationToken cancellationToken)
     {
+        if (FounderScoutSimpleMode.Enabled
+            && string.Equals(id, FounderScoutDefaults.AgentId.Value, StringComparison.Ordinal))
+        {
+            return RedirectToPage("/FounderScout/Settings");
+        }
+
         if (!AgentId.TryParse(id, out AgentId agentId)
             || management.Queries is null
             || management.Configurations is null)
@@ -71,9 +80,14 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
 
         Agent = detail.Agent.Definition;
         History = detail.ConfigurationHistory;
-        if (agentId == WakeRemoteDefaults.AgentId || agentId == FounderScoutDefaults.AgentId)
+        if (agentId == WakeRemoteDefaults.AgentId)
         {
             Form = ParseForm(detail.Configuration);
+        }
+        else if (agentId == FounderScoutDefaults.AgentId)
+        {
+            FounderScoutSettings = ParseFounderScout(detail.Configuration);
+            Form = ConfigurationForm.From(detail.Configuration, FounderScoutSettings);
         }
         else
         {
@@ -94,6 +108,12 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
             || management.Configurations is null)
         {
             return NotFound();
+        }
+
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            TempData["FlashMessage"] = "Use the focused Founder Scout Settings page to change OpenAI evaluation settings.";
+            return RedirectToPage("/FounderScout/Settings");
         }
 
         var detail = await management.Queries.GetAgentAsync(agentId, cancellationToken).ConfigureAwait(false);
@@ -170,6 +190,12 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
             return NotFound();
         }
 
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            TempData["FlashMessage"] = "Use the focused Founder Scout Settings page to protect the OpenAI API key.";
+            return RedirectToPage("/FounderScout/Settings");
+        }
+
         if (string.IsNullOrWhiteSpace(secretValue) || secretValue.Length > 65_536)
         {
             TempData["FlashMessage"] = "The secret was not changed because the submitted value was empty or too large.";
@@ -198,6 +224,12 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
         if (!AgentId.TryParse(id, out AgentId agentId) || management.Secrets is null)
         {
             return NotFound();
+        }
+
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            TempData["FlashMessage"] = "Use the focused Founder Scout Settings page to remove the OpenAI API key.";
+            return RedirectToPage("/FounderScout/Settings");
         }
 
         HomeBusinessAssistant.Application.Secrets.SecretReference? reference = id == FounderScoutDefaults.AgentId.Value
@@ -231,6 +263,13 @@ public sealed class ConfigurationModel(HostManagementComposition management) : P
         }
 
         throw new InvalidOperationException("This installed agent has no typed Stage 08 configuration adapter.");
+    }
+
+    private static FounderScoutConfiguration ParseFounderScout(AgentConfigurationRecord configuration)
+    {
+        using JsonDocument document = JsonDocument.Parse(configuration.CurrentRevision.CanonicalConfigurationJson);
+        return document.RootElement.Deserialize<FounderScoutConfiguration>(JsonOptions)
+            ?? throw new InvalidOperationException("The current Founder Scout configuration is invalid.");
     }
 
     private async ValueTask LoadSecretStateAsync(CancellationToken cancellationToken)

@@ -243,6 +243,18 @@ public sealed class HostRuntime : IAsyncDisposable
             founderScoutDatabase.DataDirectory,
             timeProvider);
         var founderScoutRepository = new FounderScoutRepository(founderScoutDatabase.ContextFactory, timeProvider);
+        FounderScoutSimpleModeInitializationResult simpleMode = await new FounderScoutSimpleModeInitializer(
+            configurations,
+            agents,
+            founderScoutRepository,
+            founderScoutRepository,
+            timeProvider).InitializeAsync(cancellationToken).ConfigureAwait(false);
+        logger.Information(
+            "Founder Scout simple mode ready: configurationChanged={ConfigurationChanged}, agentEnabled={AgentEnabled}, accountChanged={AccountChanged}, segmentChanged={SegmentChanged}.",
+            simpleMode.ConfigurationChanged,
+            simpleMode.AgentEnabled,
+            simpleMode.BrowserAccountChanged,
+            simpleMode.DiscoverySegmentChanged);
         FounderProviderReadinessProbeHost founderProviderProbeHost = FounderProviderReadinessProbeHost.Create();
         ProductBuildInfo build = ProductBuildInfo.Load(typeof(HostRuntime).Assembly);
         var backups = new DatabaseBackupService(

@@ -26,6 +26,7 @@
                 <tbody>
                 @foreach (var item in Model.Agents)
                 {
+                    bool isFounderScout = item.Definition.Id.Value == "founder-scout";
                     <tr>
                         <td><strong><a asp-page="/Agents/Details" asp-route-id="@item.Definition.Id.Value">@item.Definition.DisplayName</a></strong><span class="supporting code">@item.Definition.Id.Value</span></td>
                         <td>@item.Definition.InstalledVersion<span class="supporting">manifest @item.Definition.ManifestVersion</span></td>
@@ -37,12 +38,19 @@
                         <td>
                             <div class="inline-actions">
                                 <a class="button-link ghost" asp-page="/Agents/Details" asp-route-id="@item.Definition.Id.Value">Open</a>
-                                <form method="post" asp-page-handler="Setup"><input type="hidden" name="id" value="@item.Definition.Id.Value" /><button type="submit" class="secondary">@(Model.PendingAgentIds.Contains(item.Definition.Id) ? "Set up" : "Run setup again")</button></form>
-                                <form method="post" asp-page-handler="SetEnabled" data-confirm="@(item.Definition.Enabled ? "Disable this agent? Active runs will continue until explicitly cancelled." : "Enable this agent?")">
-                                    <input type="hidden" name="id" value="@item.Definition.Id.Value" />
-                                    <input type="hidden" name="enabled" value="@(!item.Definition.Enabled)" />
-                                    <button type="submit" class="@(item.Definition.Enabled ? "danger" : "secondary")">@(item.Definition.Enabled ? "Disable" : "Enable")</button>
-                                </form>
+                                @if (isFounderScout)
+                                {
+                                    <a class="button-link secondary" asp-page="/Agents/Configuration" asp-route-id="founder-scout">View settings</a>
+                                }
+                                else
+                                {
+                                    <form method="post" asp-page-handler="Setup"><input type="hidden" name="id" value="@item.Definition.Id.Value" /><button type="submit" class="secondary">@(Model.PendingAgentIds.Contains(item.Definition.Id) ? "Set up" : "Run setup again")</button></form>
+                                    <form method="post" asp-page-handler="SetEnabled" data-confirm="@(item.Definition.Enabled ? "Disable this agent? Active runs will continue until explicitly cancelled." : "Enable this agent?")">
+                                        <input type="hidden" name="id" value="@item.Definition.Id.Value" />
+                                        <input type="hidden" name="enabled" value="@(!item.Definition.Enabled)" />
+                                        <button type="submit" class="@(item.Definition.Enabled ? "danger" : "secondary")">@(item.Definition.Enabled ? "Disable" : "Enable")</button>
+                                    </form>
+                                }
                             </div>
                         </td>
                     </tr>

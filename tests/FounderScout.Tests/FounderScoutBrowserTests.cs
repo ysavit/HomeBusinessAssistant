@@ -217,6 +217,118 @@ internal sealed class FounderScoutBrowserTests
     }
 
     [Test]
+    public async Task SourceAdapterSupportsCurrentCandidateRouteAndFiltersNavigationLinks()
+    {
+        await using StartupSchoolFixtureServer server = StartupSchoolFixtureServer.Start();
+        string root = NewRoot();
+        try
+        {
+            StartupSchoolSourceOptions options = server.CreateOptions(server.CurrentDiscoveryListUrl) with
+            {
+                ProfileLinkLocators = [new("css", "a[href^='/cofounder-matching/']")],
+                ProfileRootLocators = [new("css", "body")],
+                DisplayNameLocators = [new("role", "heading")],
+                NextPageLocators = [new("css", "a[href='/cofounder-matching/candidate/next']")],
+            };
+            BrowserSessionOpenResult opened = await new PlaywrightBrowserSessionManager(root).OpenAsync(new(
+                "current-route-account",
+                BrowserProfilePath.Resolve(root, "current-route-account"),
+                Headless: true,
+                BrowserChannel: null,
+                NavigationTimeoutSeconds: 10));
+            Assert.That(opened.IsSuccess, Is.True);
+            await using IBrowserSession browser = opened.Session!;
+            var detector = new PlaywrightBrowserChallengeDetector();
+            var source = new StartupSchoolSourceAdapter(detector);
+
+            Assert.That((await source.OpenEntryAsync(browser, options)).Kind, Is.EqualTo(BrowserStopKind.None));
+            ProfileDiscoveryBatch first = await source.GetNextBatchAsync(browser, options, null, 0);
+            ProfileCaptureExtractionResult extracted = await new PlaywrightProfileCaptureExtractor(detector).ExtractAsync(
+                browser,
+                options,
+                "current-route-account",
+                "fixture-segment",
+                first.Links.Single());
+            FounderProfileParseResult parsed = new DeterministicFounderProfileParser().Parse(extracted.Capture!);
+            ProfileDiscoveryBatch second = await source.GetNextBatchAsync(
+                browser,
+                options,
+                first.Continuation,
+                first.PageOrScrollMarker);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.StopSignal.Kind, Is.EqualTo(BrowserStopKind.None));
+                Assert.That(first.Links.Single().SourceProfileKey, Is.EqualTo("founder-alpha"));
+                Assert.That(first.Continuation, Does.EndWith("/cofounder-matching/candidate/next"));
+                Assert.That(first.Exhausted, Is.False);
+                Assert.That(extracted.StopSignal.Kind, Is.EqualTo(BrowserStopKind.None));
+                Assert.That(extracted.Capture?.DisplayName, Is.EqualTo("Synthetic Founder founder-alpha"));
+                Assert.That(extracted.Capture?.RawText, Does.Contain("validated a focused market need"));
+                Assert.That(extracted.Capture?.StructuredFields.GetProperty("sections").EnumerateObject().Count(), Is.Zero);
+                Assert.That(parsed.Health.IsHealthy, Is.True);
+                Assert.That(parsed.Profile, Is.Not.Null);
+                Assert.That(parsed.Profile?.Warnings, Does.Contain("parser.unstructuredFallback"));
+                Assert.That(parsed.Profile?.MissingFields, Does.Contain("location"));
+                Assert.That(second.StopSignal.Kind, Is.EqualTo(BrowserStopKind.None));
+                Assert.That(second.Links.Single().SourceProfileKey, Is.EqualTo("founder-beta"));
+            });
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Test]
+    public async Task SourceAdapterCanEnterThroughNextCandidateRouteAndExtractResolvedProfile()
+    {
+        await using StartupSchoolFixtureServer server = StartupSchoolFixtureServer.Start();
+        string root = NewRoot();
+        try
+        {
+            StartupSchoolSourceOptions options = server.CreateOptions(server.CurrentNextCandidateUrl) with
+            {
+                ProfileLinkLocators = [new("css", "a[href^='/cofounder-matching/']")],
+                ProfileRootLocators = [new("css", "body")],
+                DisplayNameLocators = [new("role", "heading")],
+                NextPageLocators = [new("css", "a[href='/cofounder-matching/candidate/next']")],
+            };
+            BrowserSessionOpenResult opened = await new PlaywrightBrowserSessionManager(root).OpenAsync(new(
+                "next-route-account",
+                BrowserProfilePath.Resolve(root, "next-route-account"),
+                Headless: true,
+                BrowserChannel: null,
+                NavigationTimeoutSeconds: 10));
+            Assert.That(opened.IsSuccess, Is.True);
+            await using IBrowserSession browser = opened.Session!;
+            var detector = new PlaywrightBrowserChallengeDetector();
+            var source = new StartupSchoolSourceAdapter(detector);
+
+            Assert.That((await source.OpenEntryAsync(browser, options)).Kind, Is.EqualTo(BrowserStopKind.None));
+            ProfileDiscoveryBatch batch = await source.GetNextBatchAsync(browser, options, null, 0);
+            ProfileCaptureExtractionResult extracted = await new PlaywrightProfileCaptureExtractor(detector).ExtractAsync(
+                browser,
+                options,
+                "next-route-account",
+                "fixture-segment",
+                batch.Links.Single());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(batch.StopSignal.Kind, Is.EqualTo(BrowserStopKind.None));
+                Assert.That(batch.Links.Single().SourceProfileKey, Is.EqualTo("founder-beta"));
+                Assert.That(extracted.StopSignal.Kind, Is.EqualTo(BrowserStopKind.None));
+                Assert.That(extracted.Capture?.DisplayName, Is.EqualTo("Synthetic Founder founder-beta"));
+            });
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Test]
     public async Task DiscoveryServiceCommitsProfilesAndCheckpointsBeforeReturning()
     {
         await using StartupSchoolFixtureServer server = StartupSchoolFixtureServer.Start();
@@ -467,6 +579,57 @@ internal sealed class FounderScoutBrowserTests
             It.IsAny<string?>(),
             It.IsAny<int>(),
             It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task RepeatedBatchesStopAfterTwoNoProgressResponses()
+    {
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+        BrowserAccount account = Account(nowUtc);
+        DiscoverySegment segment = Segment(nowUtc);
+        var session = new FakeBrowserSession();
+        var sessions = new Mock<IBrowserSessionManager>();
+        sessions.Setup(item => item.OpenAsync(It.IsAny<BrowserSessionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BrowserSessionOpenResult(session, BrowserStopSignal.None));
+        var source = new Mock<IProfileDiscoverySource>();
+        source.Setup(item => item.OpenEntryAsync(session, It.IsAny<StartupSchoolSourceOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BrowserStopSignal.None);
+        source.Setup(item => item.GetNextBatchAsync(
+                session,
+                It.IsAny<StartupSchoolSourceOptions>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProfileDiscoveryBatch([], "same-candidate", 1, false, BrowserStopSignal.None));
+        var history = new Mock<IDiscoveryHistoryReader>();
+        history.Setup(item => item.CountDistinctCandidatesCapturedSinceAsync(account.Id, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(0);
+        var accounts = new Mock<IBrowserAccountRepository>();
+        accounts.Setup(item => item.GetAsync(account.Id, It.IsAny<CancellationToken>())).ReturnsAsync(account);
+        var segments = new Mock<IDiscoverySegmentRepository>();
+        segments.Setup(item => item.GetAsync(segment.Id, It.IsAny<CancellationToken>())).ReturnsAsync(segment);
+        FounderScoutDiscoveryService service = CreatePolicyService(
+            sessions.Object,
+            source.Object,
+            Mock.Of<IBrowserDiagnosticCapture>(),
+            Mock.Of<IDiscoveryCheckpointRepository>(),
+            history.Object,
+            accounts.Object,
+            segments.Object);
+
+        FounderScoutDiscoveryResult result = await service.DiscoverAsync(Request(account, segment));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Completion, Is.EqualTo(FounderScoutDiscoveryCompletion.NoWork));
+            Assert.That(result.CompletionReasonCode, Is.EqualTo("discovery.noProgress"));
+            Assert.That(session.Disposed, Is.True);
+        });
+        source.Verify(item => item.GetNextBatchAsync(
+            session,
+            It.IsAny<StartupSchoolSourceOptions>(),
+            It.IsAny<string?>(),
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Test]

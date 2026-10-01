@@ -114,36 +114,43 @@ public sealed record FounderEvaluationRequest(
     Guid CandidateId,
     Guid SnapshotId,
     IReadOnlyList<string> ProtectedMarkers,
-    IReadOnlyList<string> ValidationFeedback)
+    IReadOnlyList<string> ValidationFeedback,
+    Guid? ExplicitReanalysisId = null)
 {
     /// <summary>Current strict evaluator response schema.</summary>
     public const string CurrentEvaluatorSchemaVersion = "founder-evaluation-response-1.0";
 
     /// <summary>Calculates the cache identity from behavior-affecting, non-secret values.</summary>
-    public string CalculateInputHash() => FounderProfileCanonicalizer.HashCanonical(new
+    public string CalculateInputHash()
     {
-        Input,
-        ProfileCompleteness,
-        LastActivityAtUtc,
-        ActivityScoreAtRequest,
-        ScorecardVersion,
-        ScorecardContentHash,
-        PromptVersion,
-        PromptContentHash,
-        EvaluatorSchemaVersion,
-        personaVersion = Persona.SchemaVersion,
-        Persona.Reference,
-        PersonaContentHash,
-        ConfigurationPolicyHash,
-        Provider,
-        ModelOrDeployment,
-        ProviderPolicyVersion,
-        RequestedLanguage,
-        RequestedTone,
-        MaximumShortDraftCharacters,
-        MaximumDetailedDraftCharacters,
-        MaximumOutputTokens,
-    });
+        string inputHash = FounderProfileCanonicalizer.HashCanonical(new
+        {
+            Input,
+            ProfileCompleteness,
+            LastActivityAtUtc,
+            ActivityScoreAtRequest,
+            ScorecardVersion,
+            ScorecardContentHash,
+            PromptVersion,
+            PromptContentHash,
+            EvaluatorSchemaVersion,
+            personaVersion = Persona.SchemaVersion,
+            Persona.Reference,
+            PersonaContentHash,
+            ConfigurationPolicyHash,
+            Provider,
+            ModelOrDeployment,
+            ProviderPolicyVersion,
+            RequestedLanguage,
+            RequestedTone,
+            MaximumShortDraftCharacters,
+            MaximumDetailedDraftCharacters,
+            MaximumOutputTokens,
+        });
+        return ExplicitReanalysisId.HasValue
+            ? FounderProfileCanonicalizer.HashCanonical(new { inputHash, ExplicitReanalysisId })
+            : inputHash;
+    }
 
     /// <summary>Renders the bounded user payload sent to the provider.</summary>
     public string CreateUserPayload()

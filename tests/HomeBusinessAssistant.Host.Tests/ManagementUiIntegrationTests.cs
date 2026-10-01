@@ -70,6 +70,7 @@ internal sealed class ManagementUiIntegrationTests
                 "/Audit",
                 "/FounderScout",
                 "/FounderScout/Candidates",
+                "/FounderScout/Settings",
                 "/FounderScout/Queue",
                 "/FounderScout/Operations",
                 "/Settings",
@@ -89,6 +90,7 @@ internal sealed class ManagementUiIntegrationTests
             }
 
             string genericConfiguration = await client.GetStringAsync("/Agents/sample-business-agent/configuration");
+            string founderScoutAgent = await client.GetStringAsync("/Agents/founder-scout");
             Assert.Multiple(() =>
             {
                 Assert.That(genericConfiguration, Does.Contain("Sample Business Agent configuration"));
@@ -96,6 +98,7 @@ internal sealed class ManagementUiIntegrationTests
                 Assert.That(genericConfiguration, Does.Contain("Included extensions"));
                 Assert.That(genericConfiguration, Does.Contain("Protected secrets"));
                 Assert.That(genericConfiguration, Does.Not.Contain("<script>"));
+                Assert.That(founderScoutAgent, Does.Contain("pill positive\">Present"));
             });
 
             using HttpResponseMessage missingAntiforgery = await client.PostAsync(
@@ -109,12 +112,47 @@ internal sealed class ManagementUiIntegrationTests
             Assert.That(founderScoutMissingAntiforgery.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             string founderScoutOverview = await client.GetStringAsync("/FounderScout");
+            string founderScoutCandidates = await client.GetStringAsync("/FounderScout/Candidates?recommendation=StrongConnect&minimumScore=100&needsManualReview=true");
+            string founderScoutSettings = await client.GetStringAsync("/Agents/founder-scout/configuration");
+            string founderScoutOperations = await client.GetStringAsync("/FounderScout/Operations");
             Assert.Multiple(() =>
             {
-                Assert.That(founderScoutOverview, Does.Contain("Manual invitation boundary"));
+                Assert.That(founderScoutOverview, Does.Contain("Start Founder Scout"));
+                Assert.That(founderScoutOverview, Does.Contain("Delay between profiles (seconds)"));
+                Assert.That(founderScoutOverview, Does.Contain("AI is not used by Start"));
+                Assert.That(founderScoutOverview, Does.Contain("saves each result locally before any optional processing"));
+                Assert.That(founderScoutOverview, Does.Contain("enter your password only in the Startup School browser window"));
+                Assert.That(founderScoutOverview, Does.Not.Contain("type=\"password\""));
+                Assert.That(founderScoutOverview, Does.Not.Contain("Manual queue"));
+                Assert.That(founderScoutOverview, Does.Not.Contain("Operations &amp; reports"));
+                Assert.That(founderScoutOverview, Does.Contain(">Dashboard<"));
+                Assert.That(founderScoutOverview, Does.Contain(">Founder Scout<"));
+                Assert.That(founderScoutOverview, Does.Contain("aria-label=\"Founder Scout sections\""));
+                Assert.That(founderScoutOverview, Does.Contain(">Overview<"));
+                Assert.That(founderScoutOverview, Does.Contain(">Candidates<"));
+                Assert.That(founderScoutOverview, Does.Contain(">Settings<"));
                 Assert.That(founderScoutOverview, Does.Not.Contain(">Send<"));
                 Assert.That(founderScoutOverview, Does.Not.Contain("browser-profiles"));
+                Assert.That(founderScoutCandidates, Does.Contain("saved candidates"));
+                Assert.That(founderScoutCandidates, Does.Contain("Analyze candidates now"));
+                Assert.That(founderScoutCandidates, Does.Contain("Analyze saved candidates"));
+                Assert.That(founderScoutCandidates, Does.Not.Contain("Minimum score"));
+                Assert.That(founderScoutCandidates, Does.Not.Contain("Needs attention only"));
+                Assert.That(founderScoutSettings, Does.Contain("AI settings"));
+                Assert.That(founderScoutSettings, Does.Not.Contain("Analyze candidates now"));
+                Assert.That(founderScoutSettings, Does.Contain("Analysis enabled"));
+                Assert.That(founderScoutSettings, Does.Contain("OpenAI model"));
+                Assert.That(founderScoutSettings, Does.Contain("Founder context and evaluation instructions"));
+                Assert.That(founderScoutSettings, Does.Contain("type=\"password\""));
+                Assert.That(founderScoutSettings, Does.Not.Contain("stage-08-secret-must-not-render"));
+                Assert.That(founderScoutOperations, Does.Contain("startup-school-primary"));
+                Assert.That(founderScoutOperations, Does.Contain("startup-school-default"));
             });
+
+            using HttpResponseMessage founderScoutSettingsMissingAntiforgery = await client.PostAsync(
+                "/FounderScout/Settings?handler=Save",
+                new StringContent(string.Empty));
+            Assert.That(founderScoutSettingsMissingAntiforgery.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             using HttpResponseMessage hostileOutput = await client.GetAsync($"/Runs/{hostileRunId.Value:D}");
             string hostileBody = await hostileOutput.Content.ReadAsStringAsync();
@@ -161,6 +199,12 @@ internal sealed class ManagementUiIntegrationTests
 
     private static async Task RegisterSampleAgentAsync(string repositoryRoot, string data, string agents)
     {
+        string founderPackage = Path.Combine(agents, "founder-scout");
+        Directory.CreateDirectory(founderPackage);
+        File.Copy(Path.Combine(repositoryRoot, "manifests", "founder-scout.agent-manifest.json"), Path.Combine(founderPackage, "manifest.json"));
+        File.Copy(Path.Combine(repositoryRoot, "manifests", "founder-scout.configuration.schema.json"), Path.Combine(founderPackage, "configuration.schema.json"));
+        File.Copy(typeof(AgentRegistryScanner).Assembly.Location, Path.Combine(founderPackage, "FounderScout.exe"));
+
         string package = Path.Combine(agents, "sample-business-agent");
         Directory.CreateDirectory(package);
         File.Copy(Path.Combine(repositoryRoot, "agents", "SampleBusinessAgent", "manifest.json"), Path.Combine(package, "manifest.json"));

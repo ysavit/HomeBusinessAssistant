@@ -44,6 +44,11 @@ public sealed class FounderScoutModel(HostManagementComposition management, IWeb
     /// <summary>Loads current authoritative state without reading secret content or creating a browser directory.</summary>
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
+        if (FounderScoutSimpleMode.Enabled)
+        {
+            TempData["FlashMessage"] = "Founder Scout uses code-owned settings in simple mode; there is no setup wizard.";
+            return RedirectToPage("/Agents/Configuration", new { id = FounderScoutDefaults.AgentId.Value });
+        }
         if (!TryNormalizeStep() || management.FounderScoutOnboarding is null) return NotFound();
         try
         {
@@ -304,7 +309,9 @@ public sealed class FounderScoutModel(HostManagementComposition management, IWeb
     private bool TryService(out IFounderScoutOnboardingService service)
     {
         service = management.FounderScoutOnboarding!;
-        return SessionId != Guid.Empty && management.FounderScoutOnboarding is not null;
+        return !FounderScoutSimpleMode.Enabled
+            && SessionId != Guid.Empty
+            && management.FounderScoutOnboarding is not null;
     }
 
     private bool TryNormalizeStep()

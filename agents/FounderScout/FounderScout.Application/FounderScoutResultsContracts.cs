@@ -190,6 +190,9 @@ public sealed record FounderScoutRetentionResult(
     int Failed,
     IReadOnlyList<string> FailureCodes);
 
+/// <summary>Result of explicitly queueing locally stored, screened candidates for AI evaluation.</summary>
+public sealed record FounderScoutAnalysisQueueResult(int Queued, int AlreadyPending, int Eligible);
+
 /// <summary>One report candidate shared by every top-candidate export format.</summary>
 public sealed record FounderScoutReportCandidate(
     FounderScoutCandidateListItem Candidate,
@@ -246,6 +249,16 @@ public interface IFounderScoutResultsQuery
 /// <summary>Focused local Founder Scout mutations. This interface intentionally has no send method.</summary>
 public interface IFounderScoutResultsCommands
 {
+    /// <summary>
+    /// Queues a bounded number of stored candidates that have a current normalized snapshot and screening
+    /// decision but no AI evaluation. This explicit local action may include deterministic monitor/filter rows.
+    /// </summary>
+    ValueTask<FounderScoutAnalysisQueueResult> QueueUnanalyzedForAnalysisAsync(
+        int maximumCandidates,
+        string actor,
+        CancellationToken cancellationToken = default);
+    /// <summary>Explicitly queues one screened candidate, including a requested repeat evaluation.</summary>
+    ValueTask<bool> QueueCandidateForAnalysisAsync(Guid candidateId, string actor, CancellationToken cancellationToken = default);
     /// <summary>Appends and activates one human-edited draft revision.</summary>
     ValueTask<InvitationDraftRevision> SaveDraftRevisionAsync(SaveInvitationDraftRevisionRequest request, CancellationToken cancellationToken = default);
     /// <summary>Marks a generated draft reviewed for manual use.</summary>

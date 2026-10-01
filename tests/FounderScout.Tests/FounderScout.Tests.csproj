@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Agent\FounderScout.Agent.csproj" />
+    <ProjectReference Include="..\..\agents\FounderScout\FounderScout.SimpleCli\FounderScout.SimpleCli.csproj" />
     <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Application\FounderScout.Application.csproj" />
     <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Domain\FounderScout.Domain.csproj" />
     <ProjectReference Include="..\..\agents\FounderScout\FounderScout.Infrastructure\FounderScout.Infrastructure.csproj" />

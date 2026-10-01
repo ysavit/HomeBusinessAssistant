@@ -315,6 +315,7 @@ public sealed class FounderScoutDiscoveryService(
         var known = 0;
         var consecutiveKnown = 0;
         var navigationAttempts = 0;
+        var consecutiveNoProgressBatches = 0;
         var exhausted = false;
         var completion = FounderScoutDiscoveryCompletion.Completed;
         string completionReason = "discovery.sourceExhausted";
@@ -347,10 +348,27 @@ public sealed class FounderScoutDiscoveryService(
             DiscoveredProfileLink[] unseen = batch.Links
                 .Where(link => seenLinks.Add(link.SourceProfileKey))
                 .ToArray();
-            if (unseen.Length == 0 && exhausted)
+            if (unseen.Length == 0)
             {
-                break;
+                if (exhausted)
+                {
+                    break;
+                }
+
+                consecutiveNoProgressBatches++;
+                if (consecutiveNoProgressBatches >= 2)
+                {
+                    completion = viewed == 0
+                        ? FounderScoutDiscoveryCompletion.NoWork
+                        : FounderScoutDiscoveryCompletion.Completed;
+                    completionReason = "discovery.noProgress";
+                    break;
+                }
+
+                continue;
             }
+
+            consecutiveNoProgressBatches = 0;
 
             foreach (DiscoveredProfileLink link in unseen)
             {

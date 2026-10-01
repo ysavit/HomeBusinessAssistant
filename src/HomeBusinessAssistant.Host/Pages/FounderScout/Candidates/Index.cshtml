@@ -1,40 +1,125 @@
 @page
 @model HomeBusinessAssistant.Host.Pages.FounderScout.Candidates.IndexModel
 @using global::FounderScout.Application
-@using global::FounderScout.Domain
 @{
     ViewData["Title"] = "Founder candidates";
 }
 
-<header class="page-header"><div><p class="eyebrow">Server-side result set</p><h1>Candidate review</h1><p>Filter a bounded projection, compare stable score components, and open the evidence behind every recommendation.</p></div><a class="button-link secondary" asp-page="/FounderScout/Queue/Index">Open manual queue</a></header>
+<header class="page-header">
+    <div>
+        <p class="eyebrow">Local Founder Scout results</p>
+        <h1>Candidates</h1>
+        <p>Saved profiles appear here after Scout. Analyze refreshes one profile, screens it, and then runs AI evaluation.</p>
+    </div>
+</header>
+
 <partial name="../_Tabs" />
 
-<form method="get" class="filter-bar" aria-label="Candidate filters">
+<section class="panel founder-run-status" role="region" aria-label="Founder Scout run status" aria-live="polite" data-auto-refresh-seconds="@(Model.IsRunActive ? "3" : null)">
+    @if (Model.IsRunActive && Model.LatestRun is not null)
+    {
+        <div class="panel-heading"><h2>Founder Scout is running</h2><span class="pill positive">@Model.LatestRun.Run.Status</span></div>
+        <p><strong>Action:</strong> @Model.LatestRun.CommandName · Started <time datetime="@Model.LatestRun.Run.StartedAtUtc.ToString("O")">@Model.LatestRun.Run.StartedAtUtc.ToLocalTime().ToString("g")</time>. This page refreshes every 3 seconds.</p>
+        @if (Model.RunProgress?.Percentage is double percentage)
+        {
+            <progress class="run-progress" max="100" value="@percentage" aria-label="Founder Scout progress">@percentage.ToString("0")%</progress>
+        }
+        else
+        {
+            <progress class="run-progress" aria-label="Founder Scout is working">Working</progress>
+        }
+        <div class="run-progress-facts" aria-label="Live Founder Scout progress">
+            <div><span>Saved candidates</span><strong>@(Model.Dashboard?.Candidates ?? Model.Results.TotalCount)</strong></div>
+            <div><span>Pending screening</span><strong>@(Model.Dashboard?.PendingScreening ?? 0)</strong></div>
+            <div><span>Pending AI</span><strong>@(Model.Dashboard?.PendingAnalysis ?? 0)</strong></div>
+            @if (Model.RunProgress is { Current: long current, Total: long total })
+            {
+                <div><span>Current step</span><strong>@current / @total</strong></div>
+            }
+        </div>
+        <p><strong>Phase:</strong> @(Model.RunProgress?.Phase ?? "starting") · <strong>Current step:</strong> @(Model.RunProgress?.Message ?? "The Runner is starting Founder Scout.")</p>
+        <p class="supporting">Last heartbeat: @(Model.LatestRun.Run.LastHeartbeatAtUtc?.ToLocalTime().ToString("T") ?? "starting")</p>
+        <a class="button-link ghost" asp-page="/FounderScout/Index">Stop current run</a>
+    }
+    else
+    {
+        <div class="panel-heading"><h2>Founder Scout is not running</h2><a asp-page="/FounderScout/Index">Start a run</a></div>
+        @if (Model.LatestRun is null) { <p class="supporting">No run has started yet.</p> }
+    }
+    @if (Model.LatestScoutRun is not null)
+    {
+        <p><strong>Last Scout search:</strong> @Model.LatestScoutRun.Run.Status · @(Model.LatestScoutRun.Run.SummaryText ?? "No summary was saved.")</p>
+        @if (Model.LatestScoutOutcome is not null) { <p class="supporting">@Model.LatestScoutOutcome</p> }
+    }
+    @if (Model.LatestAnalysisRun is not null)
+    {
+        <p><strong>Last AI run:</strong> @Model.LatestAnalysisRun.Run.Status · @(Model.LatestAnalysisRun.Run.SummaryText ?? "No summary was saved.")</p>
+    }
+</section>
+
+<section class="founder-start-card" aria-labelledby="analyze-stored-heading">
+    <div>
+        <p class="eyebrow">Explicit OpenAI action</p>
+        <h2 id="analyze-stored-heading">Analyze saved candidates</h2>
+        <p>Evaluates up to @Model.AnalysisBatchSize screened candidates that have no AI evaluation yet. Use a row's Analyze button to refresh and evaluate that one profile again.</p>
+        <p class="field-help">Redacted candidate evidence and your founder context are sent to OpenAI and may incur API charges. <a asp-page="/FounderScout/Settings">Manage AI settings</a>.</p>
+    </div>
+    <form method="post" asp-page-handler="AnalyzeAll" data-confirm="Start OpenAI analysis for saved candidates? This may incur API charges.">
+        <button class="primary founder-start-button" type="submit" disabled="@(!Model.AnalysisReady || Model.IsRunActive)">@(Model.AnalysisReady ? "Analyze candidates now" : "Complete AI setup first")</button>
+    </form>
+</section>
+
+<form method="get" class="filter-bar founder-candidate-filters" aria-label="Candidate filters">
     <div class="search-field"><label asp-for="Search">Name search</label><input asp-for="Search" placeholder="Search candidates" /></div>
-    <div><label asp-for="Recommendation">Recommendation</label><select asp-for="Recommendation"><option value="">All</option><option>StrongConnect</option><option>Connect</option><option>Monitor</option><option>Pass</option></select></div>
-    <div><label asp-for="Status">Lifecycle</label><select asp-for="Status" asp-items="Html.GetEnumSelectList<CandidateStatus>()"><option value="">All</option></select></div>
-    <div><label asp-for="MinimumScore">Minimum score</label><input asp-for="MinimumScore" type="number" min="0" max="100" step="0.1" /></div>
-    <div><label asp-for="MaximumScore">Maximum score</label><input asp-for="MaximumScore" type="number" min="0" max="100" step="0.1" /></div>
-    <div><label asp-for="MinimumConfidence">Confidence</label><input asp-for="MinimumConfidence" type="number" min="0" max="1" step="0.05" /></div>
-    <div><label asp-for="TechnicalStatus">Technical posture</label><select asp-for="TechnicalStatus" asp-items="Html.GetEnumSelectList<TechnicalProfileStatus>()"><option value="">All</option></select></div>
-    <div><label asp-for="CommitmentStatus">Commitment</label><select asp-for="CommitmentStatus" asp-items="Html.GetEnumSelectList<FounderCommitmentStatus>()"><option value="">All</option></select></div>
-    <div><label asp-for="IdeaStatus">Idea posture</label><select asp-for="IdeaStatus" asp-items="Html.GetEnumSelectList<IdeaCommitmentStatus>()"><option value="">All</option></select></div>
-    <div><label asp-for="HasTractionEvidence">Traction evidence</label><select asp-for="HasTractionEvidence"><option value="">Either</option><option value="true">Present</option><option value="false">Missing</option></select></div>
-    <div><label asp-for="RiskKey">Risk key</label><input asp-for="RiskKey" placeholder="e.g. scope" /></div>
-    <div><label asp-for="ChangedFromUtc">Changed after</label><input asp-for="ChangedFromUtc" type="date" /></div>
-    <div><label asp-for="ChangedToUtc">Changed before</label><input asp-for="ChangedToUtc" type="date" /></div>
-    <div><label asp-for="ActiveSinceUtc">Active since</label><input asp-for="ActiveSinceUtc" type="date" /></div>
-    <div><label asp-for="QueueKind">Queue state</label><select asp-for="QueueKind" asp-items="Html.GetEnumSelectList<InvitationQueueKind>()"><option value="">Any</option></select></div>
-    <div><label asp-for="AccountId">Account</label><select asp-for="AccountId"><option value="">All</option>@foreach (var account in Model.Accounts) { <option value="@account.Id">@account.DisplayName</option> }</select></div>
-    <div><label asp-for="SegmentId">Segment</label><select asp-for="SegmentId"><option value="">All</option>@foreach (var segment in Model.Segments) { <option value="@segment.Id">@segment.Name</option> }</select></div>
-    <div><label asp-for="Sort">Sort</label><select asp-for="Sort" asp-items="Html.GetEnumSelectList<FounderScoutCandidateSort>()"></select></div>
-    <label class="check"><input asp-for="NeedsManualReview" /> Needs attention only</label>
-    <button class="primary" type="submit">Apply filters</button><a class="button-link ghost" asp-page="/FounderScout/Candidates/Index">Clear</a>
+    <button class="primary" type="submit">Search</button>
+    <a class="button-link ghost" asp-page="/FounderScout/Candidates/Index">Clear</a>
 </form>
 
-<form method="post" class="table-shell">
-    <div class="panel panel-heading"><div><h2>@Model.Results.TotalCount candidates</h2><span class="supporting">Page @Model.PageNumber of @Model.TotalPages. List rows contain no raw profile or model payload.</span></div><div class="inline-actions"><button class="ghost" asp-page-handler="Queue" asp-route-queueKind="Primary">Add selected to primary</button><button class="ghost" asp-page-handler="Queue" asp-route-queueKind="Reserve">Add selected to reserve</button></div></div>
-    @if (Model.Results.Items.Count == 0) { <p class="empty-state">No candidates match this filter. Broaden the filter or run discovery and analysis.</p> }
-    else { <div class="table-scroll"><table class="candidate-table"><thead><tr><th><span class="sr-only">Select</span></th><th>Rank</th><th>Candidate</th><th>Quality</th><th>Fit</th><th>Confidence</th><th>Activity</th><th>Risk</th><th>Priority</th><th>Queue</th><th>Updated</th></tr></thead><tbody>@foreach (var item in Model.Results.Items) { <tr><td><input type="checkbox" name="SelectedCandidateIds" value="@item.CandidateId" aria-label="Select @item.DisplayName" /></td><td class="rank-cell">@item.Rank</td><td><a asp-page="/FounderScout/Candidates/Details" asp-route-id="@item.CandidateId"><strong>@item.DisplayName</strong></a><span class="supporting">@(item.Recommendation ?? "Unscored") · @item.Status</span>@if (item.NeedsManualReview) { <span class="pill attention">Review</span> }</td><td>@item.FounderQualityScore?.ToString("0.0")</td><td>@item.OurFitScore?.ToString("0.0")</td><td>@item.Confidence?.ToString("0.00")</td><td>@item.ActivityScore?.ToString("0.0")</td><td>@item.RiskPenalty?.ToString("0.0")</td><td><strong>@item.InvitationPriority?.ToString("0.0")</strong></td><td>@(item.QueueKind is null ? "—" : $"{item.QueueKind} {item.QueuePosition}")</td><td><time datetime="@item.LastSeenAtUtc.ToString("O")">@item.LastSeenAtUtc.ToLocalTime().ToString("g")</time></td></tr> }</tbody></table></div> }
-    <div class="pagination"><span>Showing @(Model.Results.TotalCount == 0 ? 0 : Model.Results.Offset + 1)–@Math.Min(Model.Results.Offset + Model.Results.Items.Count, Model.Results.TotalCount)</span><div class="inline-actions">@if (Model.PageNumber > 1) { <a class="button-link ghost" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-search="@Model.Search" asp-route-recommendation="@Model.Recommendation" asp-route-status="@Model.Status" asp-route-minimumScore="@Model.MinimumScore" asp-route-minimumConfidence="@Model.MinimumConfidence" asp-route-needsManualReview="@Model.NeedsManualReview" asp-route-sort="@Model.Sort">Previous</a> } @if (Model.PageNumber < Model.TotalPages) { <a class="button-link ghost" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-search="@Model.Search" asp-route-recommendation="@Model.Recommendation" asp-route-status="@Model.Status" asp-route-minimumScore="@Model.MinimumScore" asp-route-minimumConfidence="@Model.MinimumConfidence" asp-route-needsManualReview="@Model.NeedsManualReview" asp-route-sort="@Model.Sort">Next</a> }</div></div>
-</form>
+<section class="table-shell">
+    <div class="panel panel-heading"><div><h2>@Model.Results.TotalCount saved candidates</h2><span class="supporting">Newest captures first · page @Model.PageNumber of @Model.TotalPages.</span></div></div>
+    @if (Model.Results.Items.Count == 0)
+    {
+        <p class="empty-state">No real founder profiles have been saved yet. Start Founder Scout from Overview and watch the running status above.</p>
+    }
+    else
+    {
+        <div class="table-scroll">
+            <table class="candidate-table">
+                <thead><tr><th>Candidate</th><th>Stored state</th><th>Source</th><th>Captured</th><th><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.Results.Items)
+                {
+                    <tr><td><a class="candidate-name-link" asp-page="/FounderScout/Candidates/Details" asp-route-id="@item.CandidateId"><strong>@item.DisplayName</strong></a>@if (item.NeedsManualReview) { <span class="pill attention">Review</span> }</td><td><span class="pill muted">Saved · @item.Status</span></td><td><span>@(item.SourceAccountId ?? "Startup School")</span><span class="supporting">@(item.SourceSegmentId ?? "default")</span></td><td><time datetime="@item.LastSeenAtUtc.ToString("O")">@item.LastSeenAtUtc.ToLocalTime().ToString("g")</time></td><td class="inline-actions"><a class="button-link ghost" asp-page="/FounderScout/Candidates/Details" asp-route-id="@item.CandidateId" aria-label="View details for @item.DisplayName">View details</a><form method="post" asp-page-handler="AnalyzeCandidate" data-confirm="Refresh this candidate and send redacted evidence to OpenAI? This may incur API charges."><input type="hidden" name="candidateId" value="@item.CandidateId" /><button class="secondary" type="submit" disabled="@(!Model.AnalysisReady || Model.IsRunActive)" aria-label="Analyze @item.DisplayName">Analyze</button></form></td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    <nav class="pagination" aria-label="Candidate pages">
+        <span>Showing @(Model.Results.TotalCount == 0 ? 0 : Model.Results.Offset + 1)–@Math.Min(Model.Results.Offset + Model.Results.Items.Count, Model.Results.TotalCount)</span>
+        @if (Model.TotalPages > 1)
+        {
+        <div class="pagination-pages">
+            @if (Model.PageNumber > 1)
+            {
+                <a class="button-link ghost" asp-route-pageNumber="@(Model.PageNumber - 1)" asp-route-search="@Model.Search">Previous</a>
+            }
+            @foreach (int pageNumber in Model.VisiblePageNumbers)
+            {
+                @if (pageNumber == Model.PageNumber)
+                {
+                    <span class="pagination-current" aria-current="page">@pageNumber</span>
+                }
+                else
+                {
+                    <a class="pagination-link" asp-route-pageNumber="@pageNumber" asp-route-search="@Model.Search" aria-label="Candidate page @pageNumber">@pageNumber</a>
+                }
+            }
+            @if (Model.PageNumber < Model.TotalPages)
+            {
+                <a class="button-link ghost" asp-route-pageNumber="@(Model.PageNumber + 1)" asp-route-search="@Model.Search">Next</a>
+            }
+        </div>
+        }
+    </nav>
+</section>

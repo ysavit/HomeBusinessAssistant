@@ -22,6 +22,8 @@ internal sealed class ProjectArchitectureTests
                 ["FounderScout.Domain", "HomeBusinessAssistant.Application", "HomeBusinessAssistant.Domain"],
             ["FounderScout.Infrastructure"] = ["FounderScout.Application"],
             ["FounderScout.Agent"] = ["FounderScout.Infrastructure", "HomeBusinessAssistant.AgentSdk"],
+            ["FounderScout.SimpleCli"] =
+                ["FounderScout.Agent", "HomeBusinessAssistant.Infrastructure", "HomeBusinessAssistant.Windows"],
             ["WakeRemote.Application"] = ["HomeBusinessAssistant.Application", "HomeBusinessAssistant.Domain"],
             ["WakeRemote.Infrastructure"] = ["HomeBusinessAssistant.Windows", "WakeRemote.Application"],
             ["WakeRemote.Agent"] =

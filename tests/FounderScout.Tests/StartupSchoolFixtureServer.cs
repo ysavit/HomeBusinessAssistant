@@ -36,6 +36,12 @@ internal sealed class StartupSchoolFixtureServer : IAsyncDisposable
 
     public string UnexpectedHostUrl => $"{BaseUrl}/unexpected-host";
 
+    public string CurrentCandidateListUrl => $"{BaseUrl}/cofounder-matching";
+
+    public string CurrentDiscoveryListUrl => $"{BaseUrl}/cofounder-matching/founders-you-may-know";
+
+    public string CurrentNextCandidateUrl => $"{BaseUrl}/cofounder-matching/candidate/next";
+
     public static StartupSchoolFixtureServer Start(int profileCount = 25)
     {
         if (profileCount is < 1 or > 100)
@@ -97,7 +103,15 @@ internal sealed class StartupSchoolFixtureServer : IAsyncDisposable
             HttpListenerContext context = await listener.GetContextAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                string html = Render(context.Request.Url?.AbsolutePath ?? "/");
+                string path = context.Request.Url?.AbsolutePath ?? "/";
+                if (path == "/cofounder-matching/candidate/next")
+                {
+                    context.Response.StatusCode = (int)HttpStatusCode.Redirect;
+                    context.Response.RedirectLocation = "/cofounder-matching/candidate/founder-beta";
+                    continue;
+                }
+
+                string html = Render(path);
                 byte[] bytes = Encoding.UTF8.GetBytes(html);
                 context.Response.StatusCode = 200;
                 context.Response.ContentType = "text/html; charset=utf-8";
@@ -155,6 +169,42 @@ internal sealed class StartupSchoolFixtureServer : IAsyncDisposable
         if (path == "/unexpected-host")
         {
             return "<html><body><main data-testid='authenticated'><a data-profile-id='outside' href='https://outside.example/profile/1'>outside</a></main></body></html>";
+        }
+
+        if (path is "/cofounder-matching" or "/cofounder-matching/founders-you-may-know")
+        {
+            return """
+                <html><body>
+                  <div data-testid='authenticated'>Authenticated fixture session</div>
+                  <nav>
+                    <a href='/cofounder-matching/inbox'>Inbox</a>
+                    <a href='/cofounder-matching/profile'>My profile</a>
+                    <a href='/cofounder-matching/founders-you-may-know'>Founders You May Know</a>
+                    <a href='/cofounder-matching/saved-profiles'>Saved Profiles</a>
+                    <a href='/cofounder-matching/candidate/next'>Next candidate</a>
+                  </nav>
+                  <a href='/cofounder-matching/founder-alpha'>View candidate</a>
+                </body></html>
+                """;
+        }
+
+        if (path.StartsWith("/cofounder-matching/founder-", StringComparison.Ordinal)
+            || path.StartsWith("/cofounder-matching/candidate/founder-", StringComparison.Ordinal))
+        {
+            string id = WebUtility.HtmlEncode(path[(path.Contains("/candidate/", StringComparison.Ordinal)
+                ? "/cofounder-matching/candidate/".Length
+                : "/cofounder-matching/".Length)..]);
+            return $"""
+                <html><body>
+                  <div data-testid="authenticated">Authenticated fixture session</div>
+                  <h1>Synthetic Founder {id}</h1>
+                  <div><p>Built a synthetic fixture company, interviewed customers, and validated a focused market need through repeated product experiments.</p></div>
+                  <div><p>A complementary co-founder for a local fixture would help build a durable customer-development and distribution plan.</p></div>
+                  <div><h2>Send some invites! You have 20 remaining this week.</h2></div>
+                  <div><h2>Continue browsing other candidates.</h2></div>
+                  <a href="/cofounder-matching/candidate/next">Next candidate</a>
+                </body></html>
+                """;
         }
 
         if (path.StartsWith("/profile/", StringComparison.Ordinal))

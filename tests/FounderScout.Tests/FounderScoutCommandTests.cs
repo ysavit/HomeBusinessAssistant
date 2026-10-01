@@ -66,6 +66,74 @@ internal sealed class FounderScoutCommandTests
     }
 
     [Test]
+    public async Task DiscoveryRejectsOutOfRangeProfileDelayBeforeBrowserWork()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"hba-founder-delay-{Guid.NewGuid():N}");
+        string data = Path.Combine(root, "data");
+        string artifacts = Path.Combine(root, "artifacts");
+        string inputEnvelope = Path.Combine(root, "execution-input.json");
+        Directory.CreateDirectory(root);
+        try
+        {
+            FounderScoutConfiguration configuration = FounderScoutSimpleMode.CreateConfiguration() with { DataDirectory = data };
+            await File.WriteAllTextAsync(
+                inputEnvelope,
+                AgentExecutionInput.Serialize(
+                    JsonSerializer.Serialize(configuration, JsonOptions),
+                    JsonSerializer.Serialize(new
+                    {
+                        accountId = FounderScoutSimpleMode.BrowserAccountId,
+                        discoveryDelaySeconds = 61,
+                    }, JsonOptions)));
+
+            AgentCommandResult result = await ExecuteCommandAsync("discover", inputEnvelope, data, artifacts);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.ExitCode, Is.EqualTo(AgentExitCode.InvalidArguments));
+                Assert.That(result.StandardError, Is.Empty);
+                Assert.That(result.StandardOutput, Does.Contain("founderScout.discovery.delayInvalid"));
+                Assert.That(result.StandardOutput, Does.Contain("Founder Scout rejected the discovery delay."));
+                Assert.That(result.Events, Has.All.Matches<AgentEventReadResult>(item => item.IsSuccess));
+            });
+        }
+        finally
+        {
+            DeleteTestDirectory(root, "hba-founder-delay-");
+        }
+    }
+
+    [Test]
+    public async Task TargetedStoredAnalysisRejectsInvalidCandidateBeforeProviderWork()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"hba-founder-targeted-{Guid.NewGuid():N}");
+        string data = Path.Combine(root, "data");
+        string artifacts = Path.Combine(root, "artifacts");
+        string inputEnvelope = Path.Combine(root, "execution-input.json");
+        Directory.CreateDirectory(root);
+        try
+        {
+            FounderScoutConfiguration configuration = FounderScoutSimpleMode.CreateConfiguration() with { DataDirectory = data };
+            await File.WriteAllTextAsync(inputEnvelope, AgentExecutionInput.Serialize(
+                JsonSerializer.Serialize(configuration, JsonOptions),
+                JsonSerializer.Serialize(new { phase = "deep", max = 1, candidateId = "invalid" }, JsonOptions)));
+
+            AgentCommandResult result = await ExecuteCommandAsync("analyze", inputEnvelope, data, artifacts);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.ExitCode, Is.EqualTo(AgentExitCode.InvalidArguments));
+                Assert.That(result.StandardOutput, Does.Contain("Targeted AI analysis requires one valid candidate ID"));
+                Assert.That(result.StandardOutput, Does.Not.Contain("providerRequests"));
+            });
+        }
+        finally
+        {
+            DeleteTestDirectory(root, "hba-founder-targeted-");
+        }
+    }
+
+    [Test]
     public async Task ImportDiagnoseReportAndNoWorkRunUseRealDatabaseAndValidJsonl()
     {
         string root = Path.Combine(Path.GetTempPath(), $"hba-founder-command-{Guid.NewGuid():N}");

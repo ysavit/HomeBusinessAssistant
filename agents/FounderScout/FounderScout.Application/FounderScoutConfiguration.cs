@@ -55,19 +55,19 @@ public sealed record StartupSchoolSourceOptions(
     bool StoreRawHtml)
 {
     /// <summary>The supported source adapter contract.</summary>
-    public const string CurrentAdapterVersion = "startup-school-1.0";
+    public const string CurrentAdapterVersion = "startup-school-1.6";
 
     /// <summary>Safe initial values; live locators remain explicitly versioned and editable.</summary>
     public static StartupSchoolSourceOptions Default { get; } = new(
         CurrentAdapterVersion,
-        "https://www.startupschool.org/cofounder-matching",
+        "https://www.startupschool.org/cofounder-matching/candidate/next",
         ["www.startupschool.org", "startupschool.org"],
         [new("css", "[data-testid='cofounder-matching']"), new("role", "heading", "Co-Founder Matching")],
         [new("css", "form[action*='login']"), new("text", "Log in", Exact: true)],
-        [new("css", "a[data-profile-id]"), new("css", "[data-testid='profile-card'] a[href]")],
-        [new("css", "main[data-profile-id]"), new("css", "[data-testid='founder-profile']")],
+        [new("css", "a[data-profile-id]"), new("css", "[data-testid='profile-card'] a[href]"), new("css", "a[href^='/cofounder-matching/']")],
+        [new("css", "main[data-profile-id]"), new("css", "[data-testid='founder-profile']"), new("css", "body")],
         [new("css", "[data-testid='profile-name']"), new("role", "heading")],
-        [new("role", "link", "Next"), new("css", "a[rel='next']")],
+        [new("css", "a[href='/cofounder-matching/candidate/next']"), new("role", "link", "Next"), new("css", "a[rel='next']")],
         [new("role", "button", "Load more"), new("css", "button[data-load-more]")],
         [new("css", "[data-testid='challenge']"), new("text", "Verify you are human")],
         [new("css", "[data-testid='throttled']"), new("text", "Too many requests")],
@@ -177,7 +177,8 @@ public sealed record FounderScoutPersonaSettings(
     IReadOnlyList<string> Strengths,
     IReadOnlyList<string> Seeking,
     string MessageTone,
-    IReadOnlyList<string> AvoidClaims);
+    IReadOnlyList<string> AvoidClaims,
+    string? AdditionalContext = null);
 
 /// <summary>Versioned baseline configuration surfaced by the Stage 08 typed editor.</summary>
 public sealed record FounderScoutConfiguration(
@@ -575,6 +576,15 @@ public sealed class FounderScoutConfigurationValidator : IAgentConfigurationVali
         ValidateStringList(errors, persona.Strengths, 20, "$.persona.strengths");
         ValidateStringList(errors, persona.Seeking, 20, "$.persona.seeking");
         ValidateStringList(errors, persona.AvoidClaims, 20, "$.persona.avoidClaims");
+        if (persona.AdditionalContext is { Length: > 0 } context
+            && (context.Length > 20_000
+                || context.Any(character => char.IsControl(character) && character is not '\r' and not '\n' and not '\t')))
+        {
+            errors.Add(new(
+                "founderScout.configuration.invalidPersonaContext",
+                "$.persona.additionalContext",
+                "Founder context must be at most 20000 characters and contain only normal text, line breaks, and tabs."));
+        }
     }
 
     private static void ValidateStringList(
@@ -631,31 +641,62 @@ public sealed class FounderScoutDefaults : IAgentDefaultConfigurationProvider
     /// <summary>The stable opaque AI key reference used by the separate secret action.</summary>
     public static SecretReference ApiKeyReference { get; } = SecretReference.Parse("secret://founder-scout/azure-openai-key");
 
+    /// <summary>
+    /// Creates the code-owned Founder Scout configuration used by simple mode.
+    /// Deep provider evaluation is available through the focused settings page. Discovery remains capture-first
+    /// and never depends on the provider being configured or available.
+    /// </summary>
+    public static FounderScoutConfiguration CreateConfiguration() => new(
+        FounderScoutConfiguration.CurrentSchemaVersion,
+        "%LOCALAPPDATA%/HomeBusinessAssistant/data/founder-scout",
+        new(true, 1, 20, 40, 60, 600, 600, 8, true, true, true, true, false),
+        new(true, 20, 1, true, 65, true, 0),
+        new(82, 72, 62, 0.60m, 30, 15, 15),
+        new(0.55m, 0.25m, 0.15m, 0.05m, 100m),
+        new(true, true, 1_000, true, true, true, 0.85m),
+        new("OpenAI", string.Empty, "gpt-5.4-mini", ApiKeyReference.Value, 120),
+        new(30, 14, 90),
+        new(
+            "1.0",
+            "founder-persona/default",
+            "Local founder",
+            "Technical Co-Founder / CTO",
+            ["Software architecture", "Product engineering", "Responsible AI workflows"],
+            ["Complementary business leadership", "Customer access or distribution", "Founder-level commitment"],
+            "Direct, thoughtful, founder-to-founder",
+            ["Do not imply a commitment to join.", "Do not promise investment or delivery.", "Do not mention automated scoring."],
+            AdditionalContext: null),
+        StartupSchoolSourceOptions.Default with
+        {
+            EntryUrl = "https://www.startupschool.org/cofounder-matching/candidate/next",
+            AllowedHosts =
+            [
+                "www.startupschool.org",
+                "startupschool.org",
+                "account.ycombinator.com",
+                "www.ycombinator.com",
+                "ycombinator.com",
+            ],
+            AuthenticatedLocators =
+            [
+                new("role", "heading", "Co-Founder Matching"),
+                new("css", "a[href*='/cofounder-matching/profile']"),
+            ],
+            LoginLocators =
+            [
+                new("css", ".sign-in-card"),
+                new("css", "input.ycid-input"),
+                new("text", "Sign in"),
+            ],
+            BrowserChannel = "chrome",
+        },
+        FounderScoutProcessingSettings.Default,
+        FounderScoutActivitySettings.Default);
+
     /// <inheritdoc />
     public AgentDefaultConfiguration GetDefault() => new(
         AgentId,
         FounderScoutConfiguration.CurrentSchemaVersion,
-        JsonSerializer.SerializeToElement(new FounderScoutConfiguration(
-            FounderScoutConfiguration.CurrentSchemaVersion,
-            "%LOCALAPPDATA%/HomeBusinessAssistant/data/founder-scout",
-            new(true, 1, 20, 40, 60, 600, 600, 8, true, true, true, true, false),
-            new(true, 20, 2, true, 65, true, 3),
-            new(82, 72, 62, 0.60m, 30, 15, 15),
-            new(0.55m, 0.25m, 0.15m, 0.05m, 100m),
-            new(true, true, 1_000, true, true, true, 0.85m),
-            new("AzureOpenAI", string.Empty, "founder-evaluator", ApiKeyReference.Value, 120),
-            new(30, 14, 90),
-            new(
-                "1.0",
-                "founder-persona/default",
-                "Local founder",
-                "Technical Co-Founder / CTO",
-                ["Software architecture", "Product engineering", "Responsible AI workflows"],
-                ["Complementary business leadership", "Customer access or distribution", "Founder-level commitment"],
-                "Direct, thoughtful, founder-to-founder",
-                ["Do not imply a commitment to join.", "Do not promise investment or delivery.", "Do not mention automated scoring."]),
-            StartupSchoolSourceOptions.Default,
-            FounderScoutProcessingSettings.Default,
-            FounderScoutActivitySettings.Default), SerializerOptions),
-        "Installed safe Founder Scout baseline defaults for local configuration.");
+        JsonSerializer.SerializeToElement(CreateConfiguration(), SerializerOptions),
+        "Installed code-owned Founder Scout simple-mode settings.");
 }

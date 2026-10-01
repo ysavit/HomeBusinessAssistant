@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FounderScout.Application;
 using HomeBusinessAssistant.Application.Management;
 using HomeBusinessAssistant.Application.Onboarding;
 using HomeBusinessAssistant.Domain.Agents;
@@ -47,7 +48,9 @@ public sealed class DetailsModel(HostManagementComposition management) : PageMod
 
         Capabilities = ParseStringArray(Detail.Agent.Definition.CapabilitiesJson);
         Commands = ParseStringArray(Detail.Agent.Definition.SupportedCommandsJson);
-        ExecutablePresent = GetExecutablePresence(Detail.Agent.Definition.ExecutableRelativePath);
+        ExecutablePresent = GetExecutablePresence(
+            Detail.Agent.Definition.WorkingDirectoryRelativePath,
+            Detail.Agent.Definition.ExecutableRelativePath);
         if (management.AgentOnboarding is not null)
         {
             AgentOnboardingDashboardStatus status = await management.AgentOnboarding.GetDashboardStatusAsync(cancellationToken).ConfigureAwait(false);
@@ -93,6 +96,12 @@ public sealed class DetailsModel(HostManagementComposition management) : PageMod
             return NotFound();
         }
 
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            TempData["FlashMessage"] = "Founder Scout is enabled automatically in simple mode.";
+            return RedirectToPage(new { id });
+        }
+
         _ = await management.Commands.SetAgentEnabledAsync(agentId, enabled, cancellationToken).ConfigureAwait(false);
         TempData["FlashMessage"] = $"{id} is now {(enabled ? "enabled" : "disabled")}.";
         return RedirectToPage(new { id });
@@ -104,6 +113,11 @@ public sealed class DetailsModel(HostManagementComposition management) : PageMod
         if (management.AgentOnboarding is null || !AgentId.TryParse(id, out AgentId agentId))
         {
             return NotFound();
+        }
+
+        if (agentId == FounderScoutDefaults.AgentId)
+        {
+            return RedirectToPage("/Agents/Configuration", new { id });
         }
 
         try
@@ -133,7 +147,7 @@ public sealed class DetailsModel(HostManagementComposition management) : PageMod
         }
     }
 
-    private bool? GetExecutablePresence(string relativePath)
+    private bool? GetExecutablePresence(string workingDirectoryRelativePath, string executableRelativePath)
     {
         if (management.Bootstrap is null)
         {
@@ -141,7 +155,7 @@ public sealed class DetailsModel(HostManagementComposition management) : PageMod
         }
 
         string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(management.Bootstrap.AgentDirectory));
-        string candidate = Path.GetFullPath(Path.Combine(root, relativePath));
+        string candidate = Path.GetFullPath(Path.Combine(root, workingDirectoryRelativePath, executableRelativePath));
         if (!candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
             return false;

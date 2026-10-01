@@ -95,7 +95,7 @@ internal sealed class PersistenceIntegrationTests
         {
             Assert.That(founderScout.Enabled, Is.False, "Manifest reseeding must preserve mutable enabled state.");
             Assert.That(founderScout.SupportedCommandsJson,
-                Is.EqualTo("[\"run\",\"discover\",\"analyze\",\"authenticate\",\"import\",\"report\",\"diagnose\",\"record-fixture\"]"));
+                Is.EqualTo("[\"start\",\"run\",\"discover\",\"analyze\",\"analyze-candidate\",\"authenticate\",\"import\",\"report\",\"diagnose\",\"record-fixture\"]"));
             Assert.That(founderScout.SupportsScheduling, Is.True);
             Assert.That(founderScout.SupportsManualRun, Is.True);
             Assert.That(defaultTimeZone.ValueJson, Is.EqualTo("{\"timeZoneId\":\"Central Standard Time\"}"));

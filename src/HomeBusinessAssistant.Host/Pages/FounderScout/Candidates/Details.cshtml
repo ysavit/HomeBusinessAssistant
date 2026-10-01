@@ -14,6 +14,38 @@
 <partial name="../_Tabs" />
 
 <section class="manual-notice"><strong>No-send workspace</strong><span>Copy a reviewed draft and send it manually in the source product. Founder Scout cannot transmit invitations.</span></section>
+@if (latestEvaluation is null)
+{
+    <section class="manual-notice ai-status-notice"><strong>AI evaluation has not run</strong><span>The summary above comes from captured profile fields and deterministic screening. No AI score, evidence review, or introduction draft exists for this candidate yet.</span></section>
+}
+else
+{
+    <section class="manual-notice ai-status-notice"><strong>AI evaluation complete</strong><span>This record includes a persisted evaluation from @latestEvaluation.Evaluation.EvaluatorModel using prompt @latestEvaluation.Evaluation.PromptVersion.</span></section>
+}
+@if (detail.Profile is { } profile)
+{
+    <section class="panel captured-profile" aria-labelledby="captured-profile-heading">
+        <div class="panel-heading"><div><h2 id="captured-profile-heading">Captured profile details</h2><span class="supporting">Normalized directly from the saved Startup School profile · parser @profile.ParserVersion · @profile.Completeness.ToString("P0") complete</span></div></div>
+        <dl class="profile-detail-grid">
+            <div><dt>Introduction</dt><dd>@(profile.Introduction ?? "Not stated")</dd></div>
+            <div><dt>Career background</dt><dd>@(profile.CareerBackground ?? "Not stated")</dd></div>
+            <div><dt>Building background</dt><dd>@(profile.BuildingBackground ?? "Not stated")</dd></div>
+            <div><dt>Startup</dt><dd>@(profile.StartupDescription ?? "Not stated")</dd></div>
+            <div><dt>Problem</dt><dd>@(profile.ProblemDescription ?? "Not stated")</dd></div>
+            <div><dt>Customer</dt><dd>@(profile.CustomerDescription ?? "Not stated")</dd></div>
+            <div><dt>Solution</dt><dd>@(profile.SolutionDescription ?? "Not stated")</dd></div>
+            <div><dt>Desired cofounder</dt><dd>@(profile.DesiredCofounderRole ?? "Not stated")</dd></div>
+            <div><dt>Operating roles</dt><dd>@(profile.Roles.Count == 0 ? "Not stated" : string.Join(", ", profile.Roles))</dd></div>
+            <div><dt>Traction claims</dt><dd>@(profile.TractionClaims.Count == 0 ? "Not stated" : string.Join(" · ", profile.TractionClaims))</dd></div>
+            <div><dt>Desired skills</dt><dd>@(profile.DesiredCofounderSkills.Count == 0 ? "Not stated" : string.Join(", ", profile.DesiredCofounderSkills))</dd></div>
+            <div><dt>Industries</dt><dd>@(profile.Industries.Count == 0 ? "Not stated" : string.Join(", ", profile.Industries))</dd></div>
+        </dl>
+    </section>
+}
+else
+{
+    <section class="panel"><div class="panel-heading"><h2>Captured profile details</h2></div><p class="empty-state">The profile snapshot is saved, but normalized profile fields are not available yet.</p></section>
+}
 <section class="score-strip" aria-label="Candidate scores"><div><span>Founder quality</span><strong>@detail.Candidate.FounderQualityScore?.ToString("0.0")</strong></div><div><span>Local fit</span><strong>@detail.Candidate.OurFitScore?.ToString("0.0")</strong></div><div><span>Confidence</span><strong>@detail.Candidate.Confidence?.ToString("0.00")</strong></div><div><span>Activity</span><strong>@detail.Candidate.ActivityScore?.ToString("0.0")</strong></div><div><span>Risk penalty</span><strong>@detail.Candidate.RiskPenalty?.ToString("0.0")</strong></div><div class="priority-score"><span>Invitation priority</span><strong>@detail.Candidate.InvitationPriority?.ToString("0.0")</strong></div></section>
 
 <div class="review-workspace">

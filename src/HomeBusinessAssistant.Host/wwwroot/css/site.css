@@ -181,7 +181,9 @@ nav a[aria-current="page"] { border-color: var(--accent); color: var(--ink); }
 .content-grid > *, .stack, .table-shell { min-width: 0; }
 .stack { display: grid; align-content: start; gap: 1rem; }
 .panel, .table-shell, .form-shell { border: 1px solid var(--line); background: var(--surface); box-shadow: 0 7px 26px rgb(35 46 41 / 4%); }
+.table-shell { overflow: hidden; }
 .panel { padding: 1.2rem; }
+.panel code { overflow-wrap: anywhere; white-space: normal; word-break: break-word; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; }
 .panel-heading h2, .section-title { margin: 0; font: 500 1.45rem/1.2 Georgia, serif; }
 .panel-heading a { font-size: .8rem; font-weight: 750; }
@@ -241,6 +243,10 @@ input[type="checkbox"], input[type="radio"] { width: auto; min-height: auto; }
 .code, pre { font-family: "Cascadia Mono", Consolas, monospace; font-size: .78rem; }
 pre { max-height: 28rem; overflow: auto; margin: 0; padding: 1rem; border: 1px solid var(--line); background: #edf0eb; color: #1d2823; white-space: pre-wrap; word-break: break-word; }
 .pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+.pagination-pages { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.pagination-link, .pagination-current { display: inline-grid; min-width: 2.45rem; min-height: 2.45rem; place-items: center; border: 1px solid var(--line); border-radius: .35rem; padding: .35rem; text-decoration: none; }
+.pagination-link { background: var(--surface); color: var(--ink); }
+.pagination-current { border-color: var(--accent); background: var(--accent); color: white; font-weight: 760; }
 .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; }
 .metric-card { padding: .8rem; border: 1px solid var(--line); background: #f8f7f2; }
 .metric-card strong, .metric-card span { display: block; }
@@ -250,9 +256,30 @@ pre { max-height: 28rem; overflow: auto; margin: 0; padding: 1rem; border: 1px s
 .manual-notice { display: flex; align-items: center; gap: .8rem; margin: 0 0 1rem; padding: .8rem 1rem; border: 1px solid #b9d4c8; border-left: .3rem solid var(--accent); background: #eef7f2; color: var(--accent-dark); }
 .manual-notice strong { flex: 0 0 auto; font-family: Georgia, serif; font-size: 1rem; }
 .manual-notice span { color: #45635a; font-size: .84rem; line-height: 1.45; }
+.founder-start-card { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(17rem, .8fr); gap: clamp(1rem, 3vw, 2rem); margin-bottom: 1rem; padding: clamp(1.1rem, 3vw, 1.8rem); border: 1px solid #b9d4c8; border-left: .35rem solid var(--accent); background: linear-gradient(135deg, #eef7f2, var(--surface)); box-shadow: var(--shadow); }
+.founder-start-card h2 { margin: 0 0 .5rem; font: 500 clamp(1.55rem, 3vw, 2.15rem) Georgia, serif; }
+.founder-start-card p { max-width: 48rem; line-height: 1.5; }
+.founder-start-form { display: grid; align-content: center; gap: .9rem; padding: 1rem; border: 1px solid var(--line); background: var(--surface); }
+.founder-start-button { width: 100%; min-height: 3rem; font-size: 1rem; }
+.founder-run-status { margin-top: 1rem; }
+.run-progress { display: block; width: 100%; height: .85rem; margin: .9rem 0; accent-color: var(--accent); }
+.run-progress-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .55rem; margin: .8rem 0; }
+.run-progress-facts > div { padding: .7rem .8rem; border: 1px solid var(--line); background: #f8f7f2; }
+.run-progress-facts span, .run-progress-facts strong { display: block; }
+.run-progress-facts span { color: var(--muted); font-size: .72rem; font-weight: 720; text-transform: uppercase; }
+.run-progress-facts strong { margin-top: .2rem; font: 500 1.25rem Georgia, serif; }
+.candidate-name-link { color: var(--ink); text-decoration-color: #8db5a4; text-decoration-thickness: .1rem; text-underline-offset: .18rem; }
+.ai-status-notice { border-color: #c9c2a9; border-left-color: #8c7441; background: #fbf8ed; color: #5d4c24; }
+.ai-status-notice span { color: #665c43; }
+.captured-profile { margin-bottom: 1rem; }
+.profile-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin: 0; }
+.profile-detail-grid > div { min-width: 0; padding: .75rem; border: 1px solid var(--line); background: #f8f7f2; }
+.profile-detail-grid dt { color: var(--muted); font-size: .72rem; font-weight: 760; letter-spacing: .04em; text-transform: uppercase; }
+.profile-detail-grid dd { margin: .3rem 0 0; overflow-wrap: anywhere; line-height: 1.45; }
 .filter-bar { display: grid; grid-template-columns: minmax(13rem, 1.5fr) repeat(5, minmax(8.5rem, 1fr)) auto auto auto; align-items: end; gap: .7rem; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
 .filter-bar label { margin-bottom: .25rem; }
 .filter-bar .check { align-self: center; white-space: nowrap; }
+.founder-candidate-filters { grid-template-columns: minmax(13rem, 1.5fr) repeat(4, minmax(8.5rem, 1fr)) auto auto auto; }
 .rank-cell { color: var(--accent); font: 600 1.2rem Georgia, serif; }
 .candidate-table td { vertical-align: middle; }
 .score-strip { display: grid; grid-template-columns: repeat(6, minmax(8rem, 1fr)); margin: 0 0 1rem; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
@@ -391,6 +418,13 @@ footer { display: flex; justify-content: center; gap: 1.2rem; padding: 1.5rem; b
     .score-strip > div { border-bottom: 1px solid var(--line); }
     .queue-grid, .draft-grid, .history-columns { grid-template-columns: 1fr; }
     .filter-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .founder-start-card { grid-template-columns: 1fr; }
+    .pagination { align-items: flex-start; flex-direction: column; }
+    .profile-detail-grid { grid-template-columns: 1fr; }
+    .candidate-table { table-layout: fixed; }
+    .candidate-table th:nth-child(3), .candidate-table td:nth-child(3),
+    .candidate-table th:nth-child(4), .candidate-table td:nth-child(4) { display: none; }
+    .candidate-table th:last-child, .candidate-table td:last-child { width: 7rem; }
 }
 
 @media (max-width: 34rem) {

@@ -424,8 +424,17 @@ public sealed partial class FounderScoutRepository
         string workerId,
         TimeSpan leaseDuration,
         CancellationToken cancellationToken = default)
+        => await ClaimAnalysisAsync(null, workerId, leaseDuration, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async ValueTask<FounderScoutAnalysisClaim?> ClaimCandidateAnalysisAsync(
+        Guid candidateId, string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken = default)
+        => await ClaimAnalysisAsync(candidateId, workerId, leaseDuration, cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask<FounderScoutAnalysisClaim?> ClaimAnalysisAsync(
+        Guid? requestedCandidateId, string workerId, TimeSpan leaseDuration, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(workerId) || workerId.Length > 128
+        if (requestedCandidateId == Guid.Empty || string.IsNullOrWhiteSpace(workerId) || workerId.Length > 128
             || leaseDuration < TimeSpan.FromSeconds(10) || leaseDuration > TimeSpan.FromHours(24))
         {
             throw new ArgumentException("The analysis worker or lease duration is invalid.", nameof(workerId));
@@ -439,7 +448,8 @@ public sealed partial class FounderScoutRepository
             await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction =
                 await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             Guid? candidateId = await context.Set<CandidateEntity>().AsNoTracking()
-                .Where(item => !item.MergedIntoCandidateId.HasValue && (item.Status == CandidateStatus.PendingAnalysis.ToString()
+                .Where(item => (!requestedCandidateId.HasValue || item.Id == requestedCandidateId.Value)
+                    && !item.MergedIntoCandidateId.HasValue && (item.Status == CandidateStatus.PendingAnalysis.ToString()
                         || (item.Status == CandidateStatus.Analyzing.ToString()
                             && item.AnalysisClaimExpiresAtUtc <= nowUtc))
                     && (!item.AnalysisClaimExpiresAtUtc.HasValue || item.AnalysisClaimExpiresAtUtc <= nowUtc))

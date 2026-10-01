@@ -332,6 +332,38 @@ internal sealed class FounderScoutProcessingTests
         });
     }
 
+    [Test]
+    public async Task TargetedProcessingClaimsOnlyRequestedSnapshot()
+    {
+        await using TemporaryFounderScoutDatabase fixture = await TemporaryFounderScoutDatabase.CreateAsync();
+        var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        FounderScoutRepository repository = fixture.CreateRepository(clock);
+        FounderScoutImportService importer = CreateImporter(fixture, repository, clock);
+        string path = Path.Combine(fixture.Database.ImportsDirectory, "targeted.json");
+        FounderScoutCaptureEnvelope[] captures =
+        [
+            RichCapture("target-first", 1, clock.GetUtcNow()),
+            RichCapture("target-second", 2, clock.GetUtcNow()),
+        ];
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(captures, JsonOptions));
+        _ = await importer.ImportAsync(new(path, Guid.NewGuid(), "target-import", 30));
+        Candidate[] candidates = (await repository.QueryRankedAsync(new(null, null, 0, 10))).Items.ToArray();
+        Guid targetCandidateId = candidates.Single(item => item.CurrentSourceProfileKey == "target-second").Id;
+        Guid targetId = (await ((IProfileSnapshotRepository)repository).ListForCandidateAsync(targetCandidateId, 10)).Single().Id;
+
+        FounderScoutProcessingBatchResult result = await CreateProcessor(fixture, repository).ProcessAsync(
+            new(1, "target-worker", Guid.NewGuid(), "target-process", FounderScoutProcessingSettings.Default, targetId));
+        ProfileSnapshot? target = await ((IProfileSnapshotRepository)repository).GetAsync(targetId);
+        ProfileSnapshot other = (await ((IProfileSnapshotRepository)repository).ListForCandidateAsync(candidates.Single(item => item.CurrentSourceProfileKey == "target-first").Id, 10)).Single();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Completed, Is.EqualTo(1));
+            Assert.That(target?.Status, Is.Not.EqualTo(ProfileSnapshotStatus.Captured));
+            Assert.That(other?.Status, Is.EqualTo(ProfileSnapshotStatus.Captured));
+        });
+    }
+
     private static FounderScoutImportService CreateImporter(TemporaryFounderScoutDatabase fixture, FounderScoutRepository repository, TimeProvider? timeProvider = null) => new(
         new FounderScoutFixtureFileReader(fixture.Database.ImportsDirectory, timeProvider ?? TimeProvider.System),
         new FounderScoutRawArtifactStore(fixture.Database.DataDirectory, fixture.Database.SnapshotsDirectory),

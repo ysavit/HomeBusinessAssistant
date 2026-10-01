@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Security.Principal;
+using FounderScout.Application;
 using HomeBusinessAssistant.Application.Desktop;
 using HomeBusinessAssistant.Host.Dashboard;
 using HomeBusinessAssistant.Host.Health;
@@ -29,15 +30,25 @@ public static class HostApplication
     {
         ArgumentNullException.ThrowIfNull(args);
 
-        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        string? executableWebRoot = HasExplicitContentRoot(args)
+            ? null
+            : ResolveExecutableWebRoot(AppContext.BaseDirectory);
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            Args = args,
+            WebRootPath = executableWebRoot,
+        });
+
         // The default Windows Event Log provider attempts to create a machine-wide source
         // during local/test startup. The Host owns one explicitly redacting provider instead.
         builder.Logging.ClearProviders();
         string requestedUrl = LoopbackUrlPolicy.Validate(builder.Configuration[WebHostDefaults.ServerUrlsKey] ?? DefaultUrl);
         var localOrigin = new Uri(requestedUrl, UriKind.Absolute);
         builder.WebHost.UseUrls(requestedUrl);
-        string ownerSid = WindowsIdentity.GetCurrent().User?.Value
-            ?? throw new InvalidOperationException("The interactive Host owner Windows SID is unavailable.");
+        string? ownerSid = FounderScoutSimpleMode.Enabled
+            ? null
+            : WindowsIdentity.GetCurrent().User?.Value
+                ?? throw new InvalidOperationException("The interactive Host owner Windows SID is unavailable.");
         HostHealthState healthState = composition?.HealthState ?? new(TimeProvider.System);
         IHostReadinessEvaluator readiness = composition?.Readiness ?? new StaticHostReadinessEvaluator(isReady: true);
         IHostDashboardService dashboard = composition?.Dashboard ?? new EmptyHostDashboardService();
@@ -60,10 +71,13 @@ public static class HostApplication
             .AddNegotiate();
         builder.Services.AddAuthorization(options =>
         {
-            options.FallbackPolicy = new AuthorizationPolicyBuilder(NegotiateDefaults.AuthenticationScheme)
-                .RequireAuthenticatedUser()
-                .RequireAssertion(context => IsOwner(context.User, ownerSid))
-                .Build();
+            if (!FounderScoutSimpleMode.Enabled)
+            {
+                options.FallbackPolicy = new AuthorizationPolicyBuilder(NegotiateDefaults.AuthenticationScheme)
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context => IsOwner(context.User, ownerSid!))
+                    .Build();
+            }
         });
         builder.Services.AddRazorPages()
             .AddApplicationPart(typeof(HostApplication).Assembly);
@@ -115,6 +129,18 @@ public static class HostApplication
         application.MapRazorPages();
         return application;
     }
+
+    internal static string? ResolveExecutableWebRoot(string baseDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+        string candidate = Path.Combine(Path.GetFullPath(baseDirectory), "wwwroot");
+        return Directory.Exists(candidate) ? candidate : null;
+    }
+
+    private static bool HasExplicitContentRoot(string[] args) =>
+        args.Any(argument =>
+            string.Equals(argument, "--contentRoot", StringComparison.OrdinalIgnoreCase)
+            || argument.StartsWith("--contentRoot=", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsOwner(ClaimsPrincipal principal, string ownerSid) =>
         principal.Identity is WindowsIdentity windowsIdentity

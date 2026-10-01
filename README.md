@@ -2,7 +2,7 @@
 
 Home Business Assistant is a Windows-first, local control plane for scheduling, launching, monitoring, auditing, and summarizing independently executable agents. The first planned agents are Founder Scout and Wake & Remote.
 
-Stages 00–20 establish the repository, versioned agent process contract, durable scheduling and supervision, Windows wake/power integration, the Wake Remote and Founder Scout agents, the owner-authenticated tray/loopback Host and management UI, grounded evaluation/review/reporting, operational summaries/notifications, hardening/E2E evidence, a self-contained per-user Windows release candidate, a reusable safe new-agent extension path, durable first-run platform readiness, restart-safe explicit agent selection with generic per-agent configuration, and specialized Founder Scout setup with browser/account/provider readiness.
+Stages 00–20 establish the repository, versioned agent process contract, durable scheduling and supervision, Windows wake/power integration, the Wake Remote and Founder Scout agents, the tray/loopback Host and management UI, grounded evaluation/review/reporting, operational summaries/notifications, hardening/E2E evidence, a self-contained per-user Windows release candidate, a reusable safe new-agent extension path, and durable onboarding foundations. Founder Scout now defaults to a code-owned simple mode for immediate local capture and deterministic screening.
 
 ## Process model
 
@@ -110,15 +110,17 @@ dotnet run --project src/HomeBusinessAssistant.Runner --no-build -c Release -- p
 
 Real wake registration is opt-in. After reviewing it, use `scripts/manual-wake-smoke.ps1 -ConfirmTaskRegistration`; the script prepares a harmless three-minute occurrence, displays the task and wake-timer diagnostics, waits for an optional user-initiated sleep test, reports persisted timing, and removes the managed task.
 
-Then browse to `http://127.0.0.1:5180/`. A genuinely fresh seed-only database routes the owner to `/Onboarding`; run the read-only readiness checks, explicitly test protected storage, review Task Scheduler/power caveats, then continue to `/Onboarding/Agents`. Installed agents are never preselected. Choose a safe available subset or defer all; the Sample Business Agent demonstrates the generic configuration/secret wizard, Founder Scout opens its seven-step specialized wizard, and Wake Remote remains pending Stage 21. Founder Scout can be configured for fixture-only capture/screening without AI, or for a conservative live pilot with explicit consent, protected provider key, no-download browser check, optional one-shot provider check, and Runner-backed headed authentication. The wizard does not enable the agent, create a schedule, start discovery, or send messages. Established installations open the dashboard without a forced wizard, offer optional readiness review, and show a non-blocking setup banner for newly scanned agents. Request liveness at `http://127.0.0.1:5180/health/live` or dependency readiness at `http://127.0.0.1:5180/health/ready`. Re-launching the Host signals the existing per-user/session instance to open the dashboard.
+Then open `http://127.0.0.1:5180/FounderScout` in Edge or Chrome. No web username or password is required. Choose the delay between profiles and click **Start Founder Scout**. A healthy dedicated browser session is reused; if sign-in is needed, enter your password/MFA only in the official Startup School browser window. Overview and Candidates show Running now/Not running state and refresh the saved-candidate count every three seconds while work is active. The run saves every retrieved profile before best-effort deterministic screening. Start never calls AI, so an AI failure cannot hide a capture. Open **Settings** to save an OpenAI model, bounded local founder context, and a write-only OpenAI Platform API key, then explicitly start AI evaluation for stored candidates. The key is protected for the current Windows user and is never displayed. No schedule is created at Host launch, and no invitation or message is sent. Request liveness at `http://127.0.0.1:5180/health/live` or dependency readiness at `http://127.0.0.1:5180/health/ready` when diagnosing the Host.
 
 See [docs/development.md](docs/development.md) for repository conventions and validation details.
+
+For a smaller interactive Scout path, use `dotnet run --project agents/FounderScout/FounderScout.SimpleCli -c Release -- run --max 5`. It searches, saves to the existing local `founders.db`, and analyzes the candidates touched by that scan. `list` and `db-path` show the saved results and exact SQLite location. See [Founder Scout setup](docs/founder-scout-setup.md) for commands and AI key setup.
 
 For deployment and operations, see [installation](docs/installation.md), [operations](docs/operations.md), [backup/restore](docs/backup-restore.md), and [security/privacy](docs/security-privacy.md).
 
 ## Current stage
 
-Stage 20 — Founder Scout Guided Onboarding is complete. Verified implementation and validation status are recorded in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
+Founder Scout simple mode is the current implemented increment. Verified implementation and validation status are recorded in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
 
 The remaining planned first-run onboarding increments are:
 
