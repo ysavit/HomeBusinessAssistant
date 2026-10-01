@@ -120,7 +120,7 @@ For deployment and operations, see [installation](docs/installation.md), [operat
 
 ## Current stage
 
-Founder Scout simple mode is the current implemented increment. Verified implementation and validation status are recorded in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
+Founder Scout simple mode and the smaller interactive console are the current implemented increments. Verified implementation and validation status are recorded in [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md).
 
 The remaining planned first-run onboarding increments are:
 

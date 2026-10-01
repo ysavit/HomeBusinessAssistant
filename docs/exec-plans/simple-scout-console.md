@@ -22,7 +22,7 @@ Add a small Windows console entry point with `run`, `analyze`, `list`, and `db-p
 - [x] Connect current agent, private input, existing database, and readable progress.
 - [x] Add console documentation and regression coverage using temporary paths and the existing fixture-backed agent suite.
 - [x] Run solution validation and update project state.
-- [ ] Commit and push `simple_scout`.
+- [x] Commit and push `simple_scout`.
 
 ## Detailed steps
 
@@ -31,6 +31,8 @@ Add `agents/FounderScout/FounderScout.SimpleCli` to the solution. Use the existi
 ## Progress
 
 2026-10-01: inspected current agent, command envelope, repository, and local data layout. Branch `simple_scout` created from the working checkout; current changes remain intact. Added the console project, targeted stored-candidate analysis argument, documentation, and tests. The local `list --max 3` command read 94 candidates from the existing database.
+
+2026-10-01: the requested source, tests, and prior Founder Scout working-tree changes were committed as `aaca25e` and pushed to `origin/simple_scout`. This plan/status handoff is recorded in a follow-up documentation commit on the same branch.
 
 ## Decisions
 

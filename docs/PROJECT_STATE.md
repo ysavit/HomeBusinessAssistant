@@ -16,7 +16,7 @@
 | Repository name | Home Business Assistant |
 | Solution | `HomeBusinessAssistant.sln` with 29 projects (including the four-project Sample Business Agent and test-only process fixture) |
 | Git branch | `simple_scout` |
-| Git state | User requested the prior working-tree changes and this increment be committed and pushed on `simple_scout`; exact commit/remote status is reported in the stage handoff. No local database, browser profile, or secret is included. |
+| Git state | The prior working-tree changes and console increment were committed as `aaca25e` and pushed to `origin/simple_scout`. This handoff status is recorded in a follow-up documentation commit. No local database, browser profile, or secret is included. |
 | Validation OS | Windows `10.0.26200`, `win-x64`, reported by `dotnet --info` |
 | SDK | .NET SDK `10.0.400`, pinned by `global.json` with `latestPatch` roll-forward |
 | Runtime | .NET / ASP.NET Core / Windows Desktop `10.0.11` |
